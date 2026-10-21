@@ -1,0 +1,48 @@
+hein-IDE ENV ZED
+
+# ------------------------- OBRIGATÓRIO --------------------------------
+py -3.14.5 -m venv .venv
+python -m venv .venv
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\.venv\Scripts\Activate.ps1
+
+python.exe -m pip install --upgrade pip    
+python -m pip install --upgrade setuptools wheel   
+
+# THEMAS E APP:
+pip install PySide6 
+pip install qdarkstyle
+pip install qt-material
+pip install qtmodern
+pip install pyqtdarktheme
+
+# MODULOS  IAS:
+pip install requests 
+pip install openai
+pip install pydantic
+
+pip install jedi
+pip install watchdog
+pip install tiktoken
+pip install langgraph
+pip install langchain
+pio install langchain-core
+pip install langchain-community 
+pip install langgraph-checkpoint-sqlite
+
+# MODULOS AUXILIARES:
+pip install qtawesome
+pip install pyflakes
+pip install debugpy
+pip install pillow
+pip install tzdata
+
+# OUTRAS DEPENDECIAS:
+pip install qrcode
+pip install numpy
+pip install pyinstaller
+
+
+
+pip install PySide6 qdarkstyle qt-material qtmodern pyqtdarktheme requests openai pydantic jedi watchdog tiktoken langgraph langchain langchain-core langchain-community langgraph-checkpoint-sqlite qtawesome pyflakes debugpy pillow tzdata qrcode numpy pyinstaller
+

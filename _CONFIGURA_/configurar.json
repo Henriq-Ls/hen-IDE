@@ -1,0 +1,59 @@
+{
+  "ui": {
+    "fonte": "hen",
+    "tamanho_fonte": "13px",
+    "borda_estilo": "dashed",
+    "borda_raio": 10,
+    "borda_larg": 0,
+    "margem_painel": 7,
+    "altura_aba": 34,
+    "tamanho_fonte_aba": 12,
+    "padding_aba_h": 12,
+    "padding_aba_v": 4
+  },
+  "editor": {
+    "fonte": "Droid Sans Mono",
+    "tamanho_fonte": 12,
+    "tamanho_minimo": 6,
+    "tamanho_maximo": 20,
+    "espacamento_linha": 15,
+    "tab_tamanho": 2,
+
+    "wrap_linha": true,
+    "fechar_pares": true,
+    "destacar_linha": true,
+    "numeros_linha": true,
+
+    "cursor_forma": "bloco",
+    "cursor_largura": 2,
+    "cursor_piscar": false,
+    "cursor_piscar_estilo": "smooth"
+  },
+  "gutter": {
+    "largura_guiter": 15,
+    "largura_git": 6,
+    "paddings": 1,
+    "largura_seta": 20,
+    "seta_estilo": "triangulo"
+  },
+  "terminal": {
+    "fonte": "hen",
+    "tamanho_fonte": 11
+  },
+  "outline": {
+    "fonte": "hen",
+    "tamanho_fonte": 9
+  },
+  "painel_arquivos": {
+    "fonte": "JetBrains Mono",
+    "tamanho_fonte": 11
+  },
+  "painel_ia": {
+    "fonte": "JetBrains Mono Light",
+    "tamanho_fonte": 13
+  },
+  "git": {
+    "fonte": "hen",
+    "tamanho_fonte": 9
+  }
+}

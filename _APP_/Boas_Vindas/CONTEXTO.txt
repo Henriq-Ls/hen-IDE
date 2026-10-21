@@ -1,0 +1,43 @@
+Contexto completo do que estamos fazendo no hein-IDE (você tem acesso ao repo agora, mas segue o histórico pra entender o raciocínio por trás do código):
+
+═══════════════════════════════════
+O PROBLEMA ORIGINAL
+═══════════════════════════════════
+A IDE tinha uma tela de boas-vindas ("Outdoor") que, mesmo antes do usuário escolher qualquer projeto, já subia threads pesadas: painel Git (que tenta autenticação COM com o Windows Credential Manager), Indexador, verificador de atualização. Isso causava crash 0x8001010d (RPC_E_WRONG_THREAD — chamada COM fora da thread STA que deveria fazer essa chamada) logo no boot, e erros de QObject sendo mexido de dentro de QThread errada.
+
+═══════════════════════════════════
+A SOLUÇÃO QUE IMPLEMENTAMOS
+═══════════════════════════════════
+Extraímos a tela de boas-vindas pra um widget isolado e leve: `_APP_/Boas_Vindas/janela_picker.py` (classe JanelaPicker). Esse widget:
+- NÃO instancia PainelGit/git_ui, Indexador, TerminalTabWidget
+- NÃO chama verificar_atualizacao no __init__
+- Só lê recentes.json e mostra: Recentes (+ Abrir Projeto/Abrir Arquivo), Clone GitHub, e uma coluna de configuração (pasta de destino + toggle "criar venv automaticamente" + botão Novo Projeto)
+- Tem parâmetro modo="boot" (usado no arranque sem projeto nenhum) ou modo="dialog" (chamado de dentro do editor já aberto, exibido com .show() não-modal, nunca .exec() nem processo novo só pra mostrar a tela)
+
+Isolamento entre projetos: quando o usuário escolhe um projeto (recente, novo, clonado), o app spawna um `subprocess.Popen([sys.executable, "main.py", f"--projeto={caminho}"])` — processo NOVO e SEPARADO, nunca mata o processo/janela do projeto que já estava aberto. Isso está em `_APP_/Boas_Vindas/lancador_projeto.py::abrir_projeto_novo_processo()`, é o ÚNICO lugar que tem esse subprocess.Popen.
+
+Os arquivos antigos (outdoor.py, painel_boas_vindas.py) JÁ FORAM APAGADOS — o JanelaPicker é o único fluxo de abertura/criação de projeto agora.
+
+═══════════════════════════════════
+BUGS JÁ CORRIGIDOS E CONFIRMADOS (não mexer, só não regredir)
+═══════════════════════════════════
+- Roteamento main.py → JanelaPicker(modo="boot") ou MainWindow(projeto_inicial=X) — confirmado funcionando em log real
+- Busca de interpretadores Python é lazy (só dispara quando usuário liga o toggle, não no boot)
+- Thread cleanup seguro, sem QThread destruído rodando
+- Filtro do stub WindowsApps (python3.exe da Microsoft Store) antes de testar interpretador
+- Filtro do Python da própria IDE (sys.executable) fora da lista de interpretadores oferecidos pro usuário — nunca deixar o usuário criar a venv do projeto dele usando o Python da IDE
+- DontUseNativeDialog no seletor de pasta (evita crash de conflito de apartment COM STA/MTA e evita diálogo nativo em inglês)
+- Tema/fonte do picker usando as chaves reais de tema_global (não hardcoded)
+- Regra das 3 venvs (não violar): venv 1 = a própria IDE (sys.executable), venv 2 = projeto do usuário (nunca sys.executable), venv 3 = pacotes extras da IDE em runtime
+
+═══════════════════════════════════
+🔴 BUG ATIVO — SEU FOCO AGORA
+═══════════════════════════════════
+"Windows fatal exception: code 0x8001010d" continua dando no boot, em main.py, FORA de qualquer thread — acontece logo depois do log "gerenciador_tema.py › carregar" (carregamento do tema) e antes de qualquer clique do usuário. App não trava (log segue normal depois), mas o VEH que deveria filtrar esse código (`_instalar_veh_com()` em main.py, comentado como filtro pro RPC_E_CANTCALLOUT_ININPUTSYNCCALL que o Qt já trata internamente) não está pegando esse caso específico.
+
+Isso já foi "corrigido" por duas sessões anteriores, mas o log real prova que ainda acontece — não confie em relato anterior, investigue direto no código:
+
+1. Leia main.py inteiro e mapeie a ordem exata de execução até o JanelaPicker aparecer na tela — em que ponto exato _instalar_veh_com() é chamado, em relação ao carregamento do tema e à construção do JanelaPicker
+2. Investigue o que roda entre o carregamento do tema e a exibição do picker que poderia tocar COM/shell do Windows (ícones do sistema, QDesktopServices, QMovie/GIF, algo de drag-and-drop, notificação do Windows)
+3. Se _instalar_veh_com() estiver depois do ponto onde o crash acontece, mova pra antes
+4. Se já estiver antes e o crash persistir, adicione log logo antes e logo depois de _instalar_veh_com() pra eu confirmar a ordem real no próximo teste

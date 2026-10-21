@@ -1,0 +1,15 @@
+# Pasta default/ — Configurações Padrão da hein IDE
+# ════════════════════════════════════════════════════
+
+Coloque aqui as cópias de referência dos arquivos JSON da IDE.
+Quando o usuário clicar em "Restaurar Padrões" no menu Projeto,
+a IDE copiará os arquivos desta pasta sobre os ativos e recarregará tudo.
+
+Arquivos esperados (copie manualmente para cá):
+  • thema.json       — cores e tema visual
+  • configurar.json  — fonte, tamanho, cursor, wrap etc.
+  • atalhos.json     — mapeamento de teclas
+  • nucleo.json      — núcleo (IA, formatador etc.)
+
+ATENÇÃO: Estes arquivos NÃO são carregados em operação normal.
+Só são usados quando o usuário escolhe restaurar os padrões.

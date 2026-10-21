@@ -1,0 +1,161 @@
+# 📁 _UTILITARIOS_/_DOC_UTILITARIOS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _UTILITARIOS_ — DOCUMENTAÇÃO DO MÓDULO
+  Última atualização: 2026-08-11 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: centralização de subprocessos sem console)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Centralizar utilitários reutilizáveis compartilhados por qualquer módulo
+da IDE: ícones, menus, popups, atualizador, guardião de pacotes, migrador
+de venv, picker de Python, pacotes e gerenciador de pacotes pip.
+Nenhum módulo da IDE deve criar menus, popups ou chamar pip diretamente —
+tudo passa por aqui.
+
+
+RESPONSABILIDADES
+─────────────────
+• Servir como wrapper de ícones qtawesome com integração ao sistema de temas
+• Prover menu de contexto estilizado universal (heinContextMenu)
+• Prover popup estilizado universal que substitui QMessageBox (HeinPopup)
+• Verificar atualizações disponíveis no GitHub em background (atualizador)
+• Guardar acesso a pacotes da _venv_hein_ via sys.path (hein_venv_guard)
+• Migrar venv de um interpretador para outro em QThread (hein_migrador_venv)
+• Selecionar interpretador Python do sistema (hein_python_picker)
+• Persistir lista de pacotes instalados (hein_pacotes_util)
+• Gerenciar instalação/remoção de pacotes pip com UI (gerenciador_pacotes)
+• Gerenciar VERSION e CHANGELOG.md do projeto aberto com segurança de thread (versionamento)
+
+
+ARQUIVOS
+────────
+  icones.py            | Wrapper central para ícones qtawesome
+                       | icone_tema(nome, tipo, **kwargs) → QIcon
+                       | Lê cor via tema_global().cor() com fallback estático
+                       | Tipos: "icone" / "icone_fraco" / "icone_destaque"
+
+  atualizador.py       | _WorkerVerifica(QThread): GET github.com/Henriq-Ls/hein-IDE/releases
+                       | Compara VERSAO_APP com tag_name da release mais recente
+                       | Emite nova_versao(str, str) se versão remota ≠ local
+                       | verificar_atualizacao(barra_aba_topo, parent) — inicia após 5s
+
+  hein_context_menu.py | heinContextMenu(QMenu): menu de contexto universal
+                       | Cores de thema.json > "menu_contexto"; fallbacks de _CONFIGURA_
+                       | API: heinContextMenu(parent, itens=[("Label","mdi.icon",callback),None,...])
+                       | .acao("Label") retorna QAction para desabilitar/modificar
+
+  hein_pou_pap.py      | HeinPopup(QDialog): substitui QMessageBox em toda a IDE
+                       | Mesmas cores do heinContextMenu (thema.json > "menu_contexto")
+                       | API estática: HeinPopup.aviso/erro/info/confirmar/pacote(título, msg, parent)
+                       | .confirmar() retorna bool; .pacote() retorna True se "Abrir _venv_hein_"
+                       | Suporte a HTML no texto; campo informativo opcional
+
+  hein_venv_guard.py   | exigir_pacote(modulo, nome, nome_pip, parent) → bool
+                       | 1. Tenta import normal; 2. Adiciona site-packages da _venv_hein_
+                       | ao sys.path; 3. Tenta novamente; 4. HeinPopup.pacote() se falhar
+                       | registrar_abrir_venv(callback) — registra ação de abrir _venv_hein_
+
+  hein_migrador_venv.py| _ThreadMigracao(QThread): pip freeze → rmtree → venv → pip install -r
+                       | Emite progresso(str) e concluido(bool, msg)
+                       | STARTUPINFO + CREATE_NO_WINDOW no Windows (sem janela preta)
+                       | iniciar_migracao(projeto, novo_python, janela, callback) — API não-bloqueante
+
+  hein_python_picker.py| hein_PythonPicker: UI para selecionar interpretador Python do sistema
+                       | Varre PATH, Python Launcher (py --list-paths), locais comuns
+                       | Integra com hein_migrador_venv via callback _on_migrado
+
+  hein_pacotes_util.py | JSON persistence para lista de pacotes instalados
+                       | Lê/escreve pacotes.json no AppData do projeto
+
+  gerenciador_pacotes.py| GerenciadorPacotes(QWidget): aba de gerenciamento de pacotes pip
+                         | Instala, remove, lista pacotes da venv do projeto atual
+                         | Tematizado via tema_global()
+
+  versionamento.py     | Utilitário thread-safe (threading.RLock de módulo).
+                       | Gerencia VERSION e CHANGELOG.md do projeto aberto.
+                       | Zero Qt — só stdlib. Chamado de qualquer thread.
+                       | criar_changelog_inicial(caminho)        → cria CHANGELOG.md vazio
+                       | registrar_changelog_commit(cam,msg,ver) → só escreve CHANGELOG
+                       |   (VERSION já escrito pelo painel Git antes do commit)
+                       | registrar_commit(caminho, msg) → bump patch + escreve VERSION
+                       |   e CHANGELOG (uso da IA: bump após o commit git)
+                       | registrar_push(caminho)       → entrada de push no CHANGELOG
+                       | checar_regressao_versao(cam, versao_nova) → bool
+                       |   True se versao_nova < VERSION atual (para UI do Executável)
+                       | registrar_release(cam, versao, desc)    → sincroniza VERSION
+                       |   com versão do release e adiciona entrada "release vX.Y.Z"
+
+  processo_sem_console.py
+                        | opcoes_processo_sem_console() → opções universais para
+                         | subprocessos internos sem janela de console no Windows;
+                         | combina STARTUPINFO/SW_HIDE e CREATE_NO_WINDOW
+
+
+FLUXO INTERNO — ÍCONES
+───────────────────────
+Qualquer módulo chama icone_tema("mdi.play")
+  ↓
+icone_tema() faz import tardio de tema_global() (evita circular)
+  ↓
+Lê a cor via tema_global().cor("interface.<tipo>", fallback)
+  ↓
+Retorna qta.icon(nome, color=cor, **kwargs)
+
+Hot-reload automático: a cor é lida a cada chamada — sem código extra nos consumidores.
+
+
+FLUXO INTERNO — ATUALIZAÇÃO
+────────────────────────────
+main_window.__init__()
+  ↓
+verificar_atualizacao(barra_aba_topo, parent=self) — QTimer 5000ms
+  ↓
+_WorkerVerifica.run() → GET GitHub API
+  ↓
+nova_versao.emit(versao, url) → barra_aba_topo.notificar_update(versao, url)
+
+
+SINAIS / API PÚBLICA
+────────────────────
+
+  _ThreadInstalador
+    [Signal] instalado = Signal(bool)
+             True se instalação bem-sucedida, False se falhou.
+    [Signal] progresso = Signal(str)
+             Linha de output do pip em tempo real.
+
+  API PÚBLICA:
+    _ThreadInstalador(modulo, python_exe).start()  — instala módulo em background
+    atualizador.verificar()                        — atualiza chip de versão na BarraTitulo
+
+
+INTEGRAÇÕES
+───────────
+• Todos os módulos da IDE → icone_tema() de _UTILITARIOS_.icones
+• _APP_/barra_aba_topo.py → recebe nova_versao via atualizador.py
+• _PAINEL_ESQUERDO_/FileTree.py → heinContextMenu para menu de contexto
+• _APP_/main_window.py → verifica atualizações ao iniciar
+• _VENV_HEIN_/painel.py → relacionado a hein_venv_guard.py
+• _CONFIGURA_/gerenciador_tema.py → tema_global().cor() lido por icones.py
+• _CONFIGURA_/__init__.py → COR_BTN_ICONE_TEXTO_qta (fallback de cor)
+• _PAINEL_ESQUERDO_/Git/ → versionamento.py: b__git_ui_conta (criar_changelog_inicial),
+  c__git_ui_projeto (registrar_changelog_commit + registrar_push)
+• _PAINEL_DIREITO_/Ias/ → versionamento.py: ias_handlers (registrar_commit/push via HEIN-GIT)
+• _TERMINAIS_/executavel_explorer.py → versionamento.py: checar_regressao_versao + registrar_release
+
+
+REGRAS
+──────
+• Import de gerenciador_tema em icones.py é SEMPRE tardio (dentro da função)
+  para evitar import circular na inicialização
+• NUNCA chamar qta.icon() diretamente nos módulos da IDE — sempre icone_tema()
+• NUNCA usar QMessageBox diretamente — sempre HeinPopup
+• NUNCA criar QMenu de contexto customizado fora daqui — sempre heinContextMenu
+• Fallback de cor: COR_BTN_ICONE_TEXTO_qta de _CONFIGURA_/__init__.py
+• hein_venv_guard: packages da _venv_hein_ rodam no processo da IDE (sys.path)
+  — isso é intencional para libs auxiliares (sounddevice, pillow...)
+• Processos internos via subprocess usam opcoes_processo_sem_console()
+• Comandos que abrem Explorer, navegador ou terminal visível ficam fora dessa
+  regra porque a janela é intencional

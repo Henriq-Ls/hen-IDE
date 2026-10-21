@@ -1,0 +1,291 @@
+
+# 📁 _EDITOR_/Funcionalidades/autocomplete.py
+"""
+Autocomplete com Jedi — usa o .venv do projeto aberto.
+"""
+import os
+import sys
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QAbstractItemView
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QFont, QColor
+
+try:
+    import jedi
+    JEDI_DISPONIVEL = True
+    print(f"[AUTOCOMPLETE] ✅ Jedi {jedi.__version__} carregado")
+except ImportError:
+    JEDI_DISPONIVEL = False
+    print("[AUTOCOMPLETE] ❌ Jedi não encontrado — pip install jedi")
+
+_ICONE = {
+    "module":    "📦", "class":     "🔷", "instance":  "🔹",
+    "function":  "🔵", "param":     "📌", "keyword":   "🔑",
+    "statement": "📄", "import":    "📥", "path":      "📂", "property":  "⚙",
+}
+_COR = {
+    "module": "#98c379", "class": "#56b6c2", "instance": "#e0e0e0",
+    "function": "#61afef", "param": "#e5c07b", "keyword": "#c678dd",
+    "statement": "#abb2bf", "import": "#98c379",
+}
+
+
+def _python_do_venv(project_path: str) -> str | None:
+    if not project_path:
+        return None
+    for c in [
+        os.path.join(project_path, ".venv", "Scripts", "python.exe"),
+        os.path.join(project_path, ".venv", "bin", "python"),
+        os.path.join(project_path, ".venv", "bin", "python3"),
+    ]:
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def _criar_ambiente(project_path: str | None):
+    """
+    Retorna (ambiente, project_path_para_jedi).
+    Prefere o .venv do projeto; cai no InterpreterEnvironment se não achar.
+    """
+    if not JEDI_DISPONIVEL:
+        return None, None
+
+    python_path = _python_do_venv(project_path)
+
+    if python_path:
+        try:
+            env = jedi.create_environment(python_path, safe=False)
+            print(f"[AUTOCOMPLETE] Usando .venv do projeto: {python_path}")
+            return env, project_path
+        except Exception as e:
+            print(f"[AUTOCOMPLETE] create_environment falhou ({e})")
+
+    try:
+        env = jedi.InterpreterEnvironment()
+        print(f"[AUTOCOMPLETE] Usando InterpreterEnvironment: {sys.executable}")
+        return env, project_path
+    except Exception as e:
+        print(f"[AUTOCOMPLETE] InterpreterEnvironment falhou ({e})")
+
+    return None, None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Lista visual
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ListaAutocomplete(QListWidget):
+    sugestao_confirmada = Signal(str, int)
+
+    def __init__(self, editor):
+        super().__init__(editor)
+        self._editor  = editor
+        self._prefixo = ""
+        self.setWindowFlags(Qt.ToolTip)
+        self.setFocusPolicy(Qt.NoFocus)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setMaximumHeight(220)
+        self.setMinimumWidth(260)
+        self.setMaximumWidth(500)
+        self.setFont(QFont("Consolas", 11))
+        self.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a2e; color: #e0e0e0;
+                border: 1px solid #4a90d9; border-radius: 4px;
+                padding: 2px; outline: none;
+            }
+            QListWidget::item { padding: 3px 8px; border-radius: 2px; }
+            QListWidget::item:hover    { background-color: #264f78; }
+            QListWidget::item:selected { background-color: #2d5a8e; color: #ffffff; }
+            QScrollBar:vertical         { width: 6px; background: transparent; }
+            QScrollBar::handle:vertical { background: #3a3a3a; border-radius: 3px; }
+        """)
+        self.itemClicked.connect(self._ao_clicar)
+        self.hide()
+
+    def mostrar_sugestoes(self, sugestoes: list, prefixo: str):
+        self._prefixo = prefixo
+        self.clear()
+        for s in sugestoes:
+            icone = _ICONE.get(s["tipo"], "•")
+            assin = f"  {s['assinatura']}" if s.get("assinatura") else ""
+            item  = QListWidgetItem(f"{icone}  {s['nome']}{assin}")
+            item.setData(Qt.UserRole, s["nome"])
+            item.setToolTip(s.get("descricao", ""))
+            item.setForeground(QColor(_COR.get(s["tipo"], "#e0e0e0")))
+            self.addItem(item)
+        if self.count() == 0:
+            self.hide()
+            return
+        self.setCurrentRow(0)
+        ponto = self._editor.cursorRect().bottomLeft()
+        ponto = self._editor.mapToGlobal(ponto)
+        self.move(ponto)
+        self.adjustSize()
+        self.setFixedWidth(max(260, self.sizeHintForColumn(0) + 24))
+        self.show()
+        self.raise_()
+
+    def fechar(self):
+        self.hide()
+        self.clear()
+
+    def navegar(self, direcao: int):
+        nova = max(0, min(self.count() - 1, self.currentRow() + direcao))
+        self.setCurrentRow(nova)
+
+    def confirmar(self):
+        item = self.currentItem()
+        if item:
+            nome = item.data(Qt.UserRole)
+            self.sugestao_confirmada.emit(nome, len(self._prefixo))
+            self.fechar()
+
+    def _ao_clicar(self, item: QListWidgetItem):
+        nome = item.data(Qt.UserRole)
+        self.sugestao_confirmada.emit(nome, len(self._prefixo))
+        self.fechar()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Gerenciador
+# ══════════════════════════════════════════════════════════════════════════════
+
+class GerenciadorAutocomplete:
+    def __init__(self, editor):
+        self._editor       = editor
+        self._lista        = ListaAutocomplete(editor)
+        self._project_path : str | None = None
+        self._ambiente     = None
+        self._proj_jedi    : str | None = None
+
+        self._ambiente, self._proj_jedi = _criar_ambiente(None)
+        self._lista.sugestao_confirmada.connect(self._inserir_sugestao)
+
+        self._timer = QTimer()
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(300)
+        self._timer.timeout.connect(self._calcular)
+
+    def set_project_path(self, path: str | None):
+        if path == self._project_path:
+            return
+        self._project_path = path
+        self._ambiente, self._proj_jedi = _criar_ambiente(path)
+
+    # ── API ───────────────────────────────────────────────────────────────────
+
+    def interceptar_tecla(self, event) -> bool:
+        if not self._lista.isVisible():
+            return False
+        tecla = event.key()
+        if tecla in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Tab):
+            self._lista.confirmar(); return True
+        if tecla == Qt.Key_Escape:
+            self.fechar(); return True
+        if tecla == Qt.Key_Up:
+            self._lista.navegar(-1); return True
+        if tecla == Qt.Key_Down:
+            self._lista.navegar(1); return True
+        return False
+
+    def ao_tecla_pressionada(self):
+        self._timer.start()
+
+    def fechar(self):
+        self._lista.fechar()
+        self._timer.stop()
+
+    def esta_visivel(self) -> bool:
+        return self._lista.isVisible()
+
+    def navegar_cima(self):   self._lista.navegar(-1)
+    def navegar_baixo(self):  self._lista.navegar(1)
+    def confirmar(self):      self._lista.confirmar()
+
+    # ── Cálculo ───────────────────────────────────────────────────────────────
+
+    def _calcular(self):
+        if not JEDI_DISPONIVEL:
+            return
+
+        cursor      = self._editor.textCursor()
+        codigo      = self._editor.toPlainText()
+        linha       = cursor.blockNumber() + 1
+        coluna      = cursor.positionInBlock()
+        arquivo     = getattr(self._editor, "file_path", None)
+        bloco_texto = cursor.block().text()
+        char_antes  = bloco_texto[coluna - 1] if coluna > 0 else ""
+
+        if char_antes in (" ", "\t", ")", "]", "}", ",", ";", '"', "'"):
+            self.fechar()
+            return
+
+        # Prefixo atual
+        inicio = coluna
+        while inicio > 0 and (bloco_texto[inicio-1].isalnum() or bloco_texto[inicio-1] == "_"):
+            inicio -= 1
+        prefixo = bloco_texto[inicio:coluna]
+
+        try:
+            # Passa o project_path pro Jedi via Project — isso faz ele achar
+            # os pacotes instalados no .venv mesmo com create_environment
+            kwargs = dict(code=codigo, path=arquivo, environment=self._ambiente)
+            if self._proj_jedi:
+                kwargs["project"] = jedi.Project(
+                    path=self._proj_jedi,
+                    added_sys_path=self._sys_path_do_venv(),
+                )
+            script = jedi.Script(**kwargs)
+            completions = script.complete(linha, coluna)
+            print(f"[JEDI] complete({linha},{coluna}) → {len(completions)} | char='{char_antes}' prefixo='{prefixo}'")
+        except Exception as e:
+            import traceback
+            print(f"[JEDI] ERRO: {e}")
+            traceback.print_exc()
+            self.fechar()
+            return
+
+        sugestoes = []
+        for c in completions[:40]:
+            tipo  = c.type or "statement"
+            assin = ""
+            if tipo == "function":
+                try:
+                    sigs = c.get_signatures()
+                    if sigs:
+                        assin = sigs[0].to_string()
+                except Exception:
+                    pass
+            desc = ""
+            try:
+                desc = c.docstring(raw=True)[:80]
+            except Exception:
+                pass
+            sugestoes.append({"nome": c.name, "tipo": tipo, "descricao": desc, "assinatura": assin})
+
+        if sugestoes:
+            self._lista.mostrar_sugestoes(sugestoes, prefixo)
+        else:
+            self.fechar()
+
+    def _sys_path_do_venv(self) -> list[str]:
+        """Retorna os site-packages do .venv do projeto."""
+        if not self._project_path:
+            return []
+        caminhos = [
+            os.path.join(self._project_path, ".venv", "Lib", "site-packages"),           # Windows
+            os.path.join(self._project_path, ".venv", "lib", "python3.10", "site-packages"),
+            os.path.join(self._project_path, ".venv", "lib", "python3.11", "site-packages"),
+            os.path.join(self._project_path, ".venv", "lib", "python3.12", "site-packages"),
+            os.path.join(self._project_path, ".venv", "lib", "python3.13", "site-packages"),
+        ]
+        return [c for c in caminhos if os.path.isdir(c)]
+
+    def _inserir_sugestao(self, nome: str, tamanho_prefixo: int):
+        cursor = self._editor.textCursor()
+        for _ in range(tamanho_prefixo):
+            cursor.deletePreviousChar()
+        cursor.insertText(nome)
+        self._editor.setTextCursor(cursor)
+        self._editor.setFocus()

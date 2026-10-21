@@ -1,0 +1,357 @@
+# 📁 _PAINEL_ESQUERDO_/Git/_DOC_GIT_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _PAINEL_ESQUERDO_/Git
+Última atualização: 2026-08-07 (troca de remoto pela lista GitHub e exclusão remota segura)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+Integrar Git local + GitHub diretamente no painel esquerdo da IDE,
+sem abrir terminal externo nem o site. O usuário autentica, cria
+repositório, commita, publica, baixa, vê histórico e restaura
+versões — tudo pela interface gráfica.
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES
+─────────────────────────────────────────────────────────────────
+
+- Autenticar no GitHub via OAuth Device Flow (sem senha na IDE; incluindo
+  delete_repo para a ação explícita de apagar repositório)
+- Salvar e reutilizar token entre sessões
+- Criar, listar e apagar repositórios via API GitHub REST v3
+- Executar comandos git locais (init, add, commit, push, pull,
+  clone, log, checkout, status, rm --cached) via subprocess
+- Publicar projeto atual no GitHub (push inicial)
+- Clonar repositório remoto e abrir na IDE
+- Trocar o remoto por seleção na lista da conta ativa, sem URL manual
+- Apagar repositório remoto no GitHub com validação e confirmação explícita
+- Exibir histórico de commits e restaurar versões
+- Exibir log das operações git em terminal interno colorido
+- Limpar do índice Git arquivos rastreados que entraram no .gitignore
+- Disparar modo staging visual na FileTree ao abrir terminal Git
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS
+─────────────────────────────────────────────────────────────────
+
+  __init__.py              exporta PainelGitHub
+
+  git_ui.py                Orquestrador. Ponto de entrada do painel.
+                           Controla navegação entre as 3 telas.
+                           Sinais: projeto_baixado(str),
+                           criar_projeto_solicitado()
+
+  a__git_ui_entrar.py      TELA 1 — Login / autenticação.
+                           GitUIEntrar. Se já logado → vai para
+                           GitUIConta. _PainelDeviceFlow exibe o
+                           código e atualiza quando autorizado.
+
+  b__git_ui_conta.py       TELA 2 — Conta e repositórios.
+                           GitUIConta. _DialogPublicar: formulário
+                           com nome, descrição e visibilidade antes
+                           de criar repositório.
+
+  c__git_ui_projeto.py     TELA 3 — Projeto aberto.
+                           GitUIProjeto. Commit, push, pull, histórico.
+                           _JanelaHistorico: lista commits com botão
+                           "Restaurar" em cada item.
+
+                           Abas do terminal Git:
+                           • _PainelStatus — lista arquivos modificados
+                             em árvore por pasta. Botão "⊘ _arquivos"
+                             filtra _* e __pycache__. Botões ⊞/⊟
+                             expandem/recolhem todos. Menu de contexto
+                             via botão direito (preparar, descartar,
+                             remover da fila). Botão "Preparar tudo" /
+                             "Remover tudo". Botão "🧹 Limpar .gitignore"
+                             com tooltip — remove do índice Git arquivos
+                             rastreados que agora estão no .gitignore
+                             (git rm --cached, sem apagar do disco).
+                           • _PainelDiferencas — lista redimensionável
+                             via QSplitter + barra de busca no diff
+                             com destaque amarelo.
+                           • _PainelRamificacoes — separação visual
+                             LOCAL / REMOTO. Remotas recolhidas por
+                             padrão e não acionam checkout direto.
+                           • _PainelGuardados — guarda/recupera stash.
+                           • _PainelHistoricoArquivo — histórico do
+                             arquivo aberto no editor. Viewer readonly
+                             com numeração de linha embutida e barra
+                             de busca com destaque de ocorrências.
+                             Atualiza ao trocar de aba no editor.
+
+   git_api.py               Wrapper API REST GitHub v3.
+                            GitHubAPI. Métodos: obter_usuario(),
+                            listar_repositorios(), criar_repositorio(),
+                            obter_repositorio(), deletar_repositorio().
+
+  git_autentica.py         OAuth Device Flow.
+                           GerenciadorAuth: solicitar_device_code(),
+                           aguardar_autorizacao(). Roda em thread
+                           separada. Polling respeitando intervalo
+                           retornado pelo GitHub (padrão 5s).
+
+  git_config.py            Configurações e token.
+                           ConfiguracaoGitHub. Singleton config_github().
+                           Salvo em %APPDATA%\hein\github_config.json:
+                           access_token, username, user_id.
+
+  git_gerente.py           Comandos git locais via subprocess.
+                           GerenciadorGit. Operações: init, add, commit,
+                           remote add, push, pull, clone, log, checkout,
+                           status, rm --cached. encoding='utf-8',
+                           errors='replace' em _executar — necessário
+                           no Windows (cp1252).
+                            Operações HTTPS autenticadas usam credencial
+                            temporária por processo; o token não é colocado
+                            na URL nem no remoto persistido.
+                           limpar_cache_gitignore(pasta): usa
+                           git ls-files -i --exclude-standard para
+                           encontrar rastreados no .gitignore; faz
+                           git rm --cached -r -- <arquivos>; não
+                           apaga arquivos do disco.
+
+  git_terminal.py          Terminal de log interno do painel.
+                           Exibe mensagens coloridas:
+                           log() branco, erro() vermelho, ok() verde.
+
+  git_ui_utils.py          Utilitários compartilhados de UI.
+                           _Ponte / _em_thread: executa tarefa em
+                           threading.Thread e entrega resultado via
+                           Signal(object) na thread principal.
+
+─────────────────────────────────────────────────────────────────
+# FLUXO INTERNO
+─────────────────────────────────────────────────────────────────
+
+AUTENTICAÇÃO (Device Flow):
+  1. solicitar_device_code() → código 8 chars para o usuário
+  2. Abre browser em github.com/login/device
+  3. Usuário cola o código e autoriza
+  4. aguardar_autorizacao() detecta autorização (polling em thread)
+  5. Token salvo via ConfiguracaoGitHub
+  → Próximas sessões: login automático, sem interação
+
+PUBLICAR PROJETO EXISTENTE:
+  1. GitUIConta._DialogPublicar → nome, descrição, visibilidade
+  2. GitHubAPI.criar_repositorio()
+  3. GerenciadorGit: git init → git add → git commit → git remote
+     add origin → git push
+  4. criar_changelog_inicial(caminho) via _UTILITARIOS_/versionamento.py
+     cria CHANGELOG.md com cabeçalho vazio junto do VERSION
+  5. Signal projeto_baixado emitido
+
+CRIAR REPOSITÓRIO AVULSO (_acao_criar_repo):
+  1. Verifica token — aborta se não há sessão ativa
+  2. QInputDialog → nome do repositório
+  3. _bloquear_botoes(True)
+  4. _criar() em background via _em_thread:
+       → urllib POST para https://api.github.com/user/repos
+        → extrai clone_url sem alterar a URL
+       → git remote add origin <clone_url>
+  5. _concluido(clone_url):
+       → _bloquear_botoes(False)
+       → se clone_url is None: exibe erro no terminal (falha silenciosa)
+       → se ok: exibe URL no terminal + log.ok()
+
+COMMIT + PUSH:
+  1. GitUIProjeto — botão Salvar → QInputDialog (mensagem do commit)
+  2. Se VERSION existir: incrementa patch e prefixa mensagem com
+     "vX.Y.Z — mensagem". Se VERSION não existir: tenta ler a última
+     tag git (git describe --tags --abbrev=0), cai em "v0.1.0" se
+     não houver tag, cria o arquivo e usa a versão encontrada sem
+     incrementar. Sem segundo diálogo.
+  3. GerenciadorGit: git add . → git commit -m "mensagem"
+  4. Botão Enviar → GerenciadorGit: git push origin main
+  5. Após commit OK: registrar_changelog_commit(caminho, mensagem, nova_versao)
+     via _UTILITARIOS_/versionamento.py — escreve entrada no CHANGELOG.md.
+     (VERSION já foi atualizado antes do commit para entrar no próprio commit)
+  6. Após push OK: registrar_push(caminho) — entrada "Enviado ao GitHub" no CHANGELOG.
+
+LIMPAR .GITIGNORE (git_gerente.limpar_cache_gitignore):
+  1. Usuário clica "🧹 Limpar .gitignore" em _PainelStatus
+  2. git ls-files -i --exclude-standard → lista arquivos rastreados
+     que violam o .gitignore atual
+  3. Se lista vazia → terminal.ok("Nenhum arquivo encontrado")
+  4. Se lista não vazia → git rm --cached -r -- <arquivos>
+  5. Terminal exibe resultado; _PainelStatus.atualizar() recarrega lista
+  6. Arquivos NÃO são apagados do disco — apenas saem do índice Git
+  7. Usuário deve fazer commit para registrar a remoção no histórico
+
+MODO STAGING (ativado pelo botão "Main" do Git):
+  1. Usuário clica botão "Main" em GitUIProjeto
+  2. abrir_painel_git emitido
+  3. base.py: segunda conexão ao sinal → PainelArquivos.entrar_modo_staging()
+  4. FileTree exibe checkboxes; botões "Marcar tudo / Desmarcar tudo" aparecem
+  5. Ao sair da aba Git → PainelAbasInferior._trocar() → sair_modo_staging()
+
+RESTAURAR VERSÃO:
+  1. _JanelaHistorico lista commits via git log
+  2. Usuário clica "Restaurar" em um commit
+  3. GerenciadorGit: git checkout <hash>
+  4. FileWatcher detecta mudança no disco → editor recarrega
+  ⚠ Resultado: repositório entra em "detached HEAD"
+    Para voltar: git checkout main pelo terminal integrado
+
+PULL:
+   1. GerenciadorGit: git pull origin main com credencial temporária da sessão ativa
+  2. GerenciadorAbas_AutoSalve + FileWatcher detectam mudanças
+  3. Arquivos abertos no editor recarregam automaticamente
+
+INTEGRAÇÃO COM A TELA DE BOAS-VINDAS:
+  1. JanelaPicker consulta config_github() para descobrir a sessão ativa.
+  2. Sem sessão, exibe “GitHub não conectado” e mantém abrir/criar projeto local
+     disponíveis.
+  3. _PainelDeviceFlow existente realiza o login quando solicitado.
+  4. Troca, adição ou saída de conta atualiza a conta ativa e invalida a lista
+     anterior de repositórios.
+  5. GitHubAPI.listar_repositorios() fornece repositórios públicos e privados.
+  6. _WorkerClone encaminha o clone para GerenciadorGit.baixar_projeto().
+
+TROCAR REPOSITÓRIO NO PROJETO ABERTO:
+  1. GitUIProjeto exige uma sessão GitHub ativa.
+  2. GitHubAPI.listar_repositorios() carrega a lista da conta ativa em thread.
+  3. O usuário seleciona um repositório na janela; não há URL manual.
+  4. Após confirmação, GerenciadorGit.definir_remoto() grava apenas a URL
+     normal do clone, sem token.
+
+APAGAR REPOSITÓRIO NO GITHUB:
+  1. GitUIProjeto valida o origin e confirma a ação destrutiva.
+  2. GitHubAPI.deletar_repositorio() executa DELETE autenticado em thread.
+  3. O origin local só é removido se a API confirmar o sucesso.
+  4. A pasta e os arquivos locais nunca são apagados por essa ação.
+
+─────────────────────────────────────────────────────────────────
+# SINAIS / API PÚBLICA
+─────────────────────────────────────────────────────────────────
+
+  Módulo Git: sem sinais Qt emitidos para módulos externos.
+  A UI Git é auto-contida — reage a ações do usuário internamente.
+
+  API PÚBLICA (chamada de _APP_/main_window.py ao abrir projeto):
+    git_ui.set_projeto(caminho: str)  — define repositório ativo
+    git_ui.set_arquivo_ativo(caminho: str)  — atualiza aba Arquivo
+      (chamado em mixin_abas ao trocar aba no editor)
+    GerenciadorGit.executar_autenticado(args, pasta, token)
+      — operação Git adicional autenticada; o token permanece no credential
+        helper temporário e é removido dos resultados, sem alterar origin.
+
+  SINAL USADO EXTERNAMENTE:
+    GitUIProjeto.abrir_painel_git  — emitido ao clicar botão "Main"
+      → base.py conecta a _abrir_aba_nucleo_no_terminal() E a
+        PainelArquivos.entrar_modo_staging()
+
+
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+  _APP_/main_window/base.py
+    Recebe signals: projeto_baixado(str),
+    criar_projeto_solicitado()
+    Conecta: abrir_painel_git → entrar_modo_staging()
+    Chama:   painel_git.conectar_painel_arquivos(painel_arquivos)
+
+  _APP_/Boas_Vindas/janela_picker.py
+    Reutiliza config_github(), _PainelDeviceFlow, GitHubAPI e
+    GerenciadorGit.baixar_projeto() para a área GitHub da tela inicial.
+
+  _APP_/main_window/mixin_abas.py
+    Chama git_ui.set_arquivo_ativo(caminho) na troca de aba
+    do editor — alimenta o _PainelHistoricoArquivo.
+
+  _PAINEL_ESQUERDO_/painel_abas_inferior.py
+    PainelAbasInferior.conectar_painel_arquivos(painel) liga
+    painel_abas_inferior ao painel_arquivos para deactivar
+    staging ao trocar de aba.
+
+  _PAINEL_ESQUERDO_/FileTree/painel.py
+    PainelArquivos.entrar_modo_staging() / sair_modo_staging()
+    disparadas pelo ciclo de vida da aba Git.
+
+  _NUCLEO_/nucleo_exportar.py
+    Hook pre-push: nucleo.gerar_para_commit() antes do push.
+    [INFORMAÇÃO NÃO CONFIRMADA] aguarda implementação do Núcleo.
+
+  GerenciadorAbas_AutoSalve + FileWatcher
+    Detectam mudanças no disco após pull e checkout.
+    Recarregam automaticamente os arquivos abertos no editor.
+
+  _LOG_/log.py
+    Todos os arquivos usam log. Nunca print().
+
+  _CONFIGURA_/__init__.py
+    Constantes de cor e configuração usadas nos painéis Git.
+
+  _UTILITARIOS_/versionamento.py
+    criar_changelog_inicial(caminho)
+      → chamado em b__git_ui_conta._ao_publicar_projeto (publicação inicial)
+    registrar_changelog_commit(caminho, mensagem, versao)
+      → chamado em c__git_ui_projeto._ao_salvar._concluido (após commit OK)
+      → VERSION já escrito antes do commit; utilitário só escreve CHANGELOG
+    registrar_push(caminho)
+      → chamado em c__git_ui_projeto._ao_enviar._concluido (após push OK)
+    Todas as chamadas thread-safe (RLock de módulo em versionamento.py)
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+- Device Flow roda em thread separada — nunca trava a UI
+- Polling do Device Flow respeita o intervalo retornado pelo GitHub
+- Todos os comandos git usam subprocess (git do sistema, não lib)
+- Chamadas de rede à GitHub API (ex: _acao_criar_repo) executadas
+  via _em_thread — nunca na thread principal
+- REQUISITO: git instalado no sistema e no PATH
+  Verificar: CMD → git --version
+- Token armazenado em %APPDATA%\hein\github_config.json
+- Login GitHub é opcional e config_github() é a fonte única da sessão.
+- Token não pode aparecer em URL, argumentos do Git, .git/config ou logs.
+- A exclusão remota deve sempre ser identificada como "Apagar repositório no
+  GitHub" e exigir confirmação; nunca confundir com apagar a pasta local.
+- Credenciais para Git HTTPS devem existir somente durante a operação e ser
+  removidas ao final.
+- Sem strings de fonte hardcoded — ficam em _CONFIGURA_/__init__.py
+- Se o script não tiver _LOG_/log.py → adicionar
+- subprocess em _executar usa encoding='utf-8', errors='replace'
+  (Windows usa cp1252 por padrão — sem isso, arquivos com acentos
+  ou bytes fora do mapa travam o reader thread)
+- limpar_cache_gitignore() NUNCA apaga arquivos do disco
+  — só remove do índice (git rm --cached)
+- Staging visual NÃO usa git add diretamente — apenas prepara a
+  seleção visual; o commit efetivo usa git add via botão Salvar
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+- Chave OAuth do projeto: https://github.com/settings/applications/3637104
+
+- Restaurar versão coloca o repo em "detached HEAD".
+  Retorno ao estado atual: git checkout main (ou master)
+  pelo terminal integrado da IDE.
+
+- git_terminal.py é exclusivo para logs do painel Git —
+  diferente do terminal PowerShell da IDE.
+
+- _em_thread (_Ponte em git_ui_utils.py) usa threading.Thread com
+  daemon=True; exceções na tarefa são capturadas silenciosamente e
+  resultado None é emitido ao callback — o callback deve tratar None
+  como falha (padrão: exibir erro no terminal + log).
+
+- Padrão de barra de busca (Diferenças e Arquivo):
+  QLineEdit → textChanged → _ao_buscar*(texto).
+  Usa QTextEdit.ExtraSelection com fundo #3a3a00 / texto #ffee44.
+  Scroll automático para a primeira ocorrência. Contador "N resultados"
+  ao lado do campo. Limpa ao trocar de arquivo/commit.
+
+- _PainelStatus._ocultar_ruido=True por padrão — arquivos _* e
+  pastas __pycache__ ocultos até o usuário desativar o filtro.
+  O filtro age em _preencher_grupo() recursivamente.
+
+- Remotas em _PainelRamificacoes têm UserRole=None para evitar
+  que o menu de contexto tente fazer checkout nelas (git checkout
+  de uma remote branch exige criar branch local de rastreamento).
+
+- limpar_cache_gitignore(): usa git ls-files -i --exclude-standard
+  que respeita todos os padrões de .gitignore, .gitignore global e
+  .git/info/exclude. Não precisa parsear o .gitignore manualmente.

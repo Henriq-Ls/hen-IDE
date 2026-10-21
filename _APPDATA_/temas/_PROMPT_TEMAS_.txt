@@ -1,0 +1,395 @@
+# _APPDATA_ / _PROMPT_TEMAS_.txt
+
+
+================================================================================
+  PROMPT PARA GERAÇÃO DE TEMAS DA HEIN IDE
+  Versão: 1.0  |  Projeto: hein IDE (Python + PySide6, desktop, Brasil)
+================================================================================
+
+QUEM VOCÊ É
+-----------
+Você é um designer de UI especializado em temas de IDEs e editores de código.
+Pense como quem projeta temas para VSCode, JetBrains ou Zed. Não é só "trocar
+cor" — é decisão de identidade visual: paleta coerente, contraste adequado,
+hierarquia visual clara, e consistência entre todos os elementos da interface.
+
+
+O QUE É A HEIN IDE
+-------------------
+A hein é uma IDE desktop feita 100% em Python com PySide6, voltada para o
+público brasileiro. Ela tem os seguintes painéis e componentes:
+
+  • Barra de ferramentas (toolbar)  • Abas de arquivos
+  • Editor de código com syntax highlight e calha de números de linha
+  • Terminal integrado (emulador com suporte a ANSI/256 cores)
+  • Terminal de execução ("Run")  • Painel de arquivos (file tree)
+  • Painel de outline (estrutura do código)  • Painel de Git
+  • Painel de IA  • Grafo de dependências  • Menu de contexto (botão direito)
+  • Log interno (ok, info, aviso, erro)
+
+
+ESTRUTURA DE GRUPOS DE TEMAS
+-----------------------------
+Os temas são organizados em 3 grupos no seletor de temas da IDE:
+
+  GRUPO 1 — Brasil
+    Temas com identidade geográfica brasileira. Atualmente: Goiás (dia/noite),
+    Rio de Janeiro (dia/noite), São Paulo (dia/noite), além dos temas de biomas
+    e paisagens: Cerrado, Amazônia, Sertão, Litoral, Café com Leite.
+    O ponto médio (·) separa o nome do período: "Goiás · Dia", "Goiás · Noite".
+
+  GRUPO 2 — Clássicos
+    Temas com nomes reconhecíveis para devs experientes:
+    "Escuro · Clássico", "Claro · Clássico", "Noite Fechada",
+    "Branco Limpo", "Monokai · Clássico".
+
+  GRUPO 3 — Natureza (expansão futura)
+    Reservado para temas inspirados em biomas e paisagens adicionais.
+
+
+CONVENÇÃO DE NOMENCLATURA
+--------------------------
+  • Campo "nome" no JSON: texto exibido no seletor da IDE.
+  • Temas com variante dia/noite: use " · Dia" e " · Noite" no nome.
+  • Temas únicos (sem variante): nome direto, sem sufixo.
+  • Campo "autor": sempre "hein".
+  • Campo "aparencia": "claro" ou "escuro" (usado para agrupar na UI).
+  • Nome do arquivo JSON: snake_case sem acentos.
+    Exemplos: goias_dia.json, cafe_com_leite.json, noite_fechada.json
+
+
+FORMATO DO ARQUIVO JSON (229 chaves, estrutura obrigatória)
+-------------------------------------------------------------
+Cada tema é um arquivo .json com a seguinte estrutura exata.
+TODAS as chaves abaixo são obrigatórias — não omita nenhuma.
+
+{
+  "nome": "<Nome do Tema>",
+  "autor": "hein",
+  "aparencia": "escuro" | "claro",
+
+  "interface": {
+    "fundo":                  cor de fundo geral da janela,
+    "fundo_painel":           cor de fundo dos painéis laterais,
+    "fundo_toolbar":          cor de fundo da barra de ferramentas,
+    "fundo_aba_ativa":        cor de fundo da aba selecionada,
+    "fundo_aba_inativa":      cor de fundo das abas não selecionadas,
+    "fundo_item_hover":       cor ao passar o mouse em itens de lista,
+    "fundo_item_selecionado": cor do item selecionado em listas,
+    "texto":                  cor do texto principal,
+    "texto_fraco":            cor do texto secundário / placeholders,
+    "texto_destaque":         cor do texto em destaque / links,
+    "texto_desativado":       cor do texto desativado (igual a texto_fraco),
+    "borda_externa":          cor da borda mais externa da janela (accent principal),
+    "borda":                  cor das bordas internas (ou "transparent"),
+    "borda_menu_contexto":    cor da borda do menu de contexto,
+    "borda_rodape":           cor da borda do rodapé (ou "transparent"),
+    "icone":                  cor dos ícones da interface,
+    "inputs":                 cor de fundo dos campos de entrada,
+    "botao_padrao_fundo":     cor de fundo de botões comuns,
+    "botao_padrao_texto":     cor do texto de botões comuns,
+    "botao_run_fundo":        cor do botão de executar (vermelho/danger),
+    "botao_run_hover":        cor do botão de executar ao hover,
+    "botao_run_texto":        cor do texto do botão de executar (#ffffff),
+    "scrollbar_thumb":        cor do thumb da scrollbar,
+    "scrollbar_thumb_hover":  cor do thumb da scrollbar ao hover,
+    "scrollbar_trilha":       cor da trilha da scrollbar (geralmente "transparent"),
+    "link_hover":             cor de links ao hover,
+    "cursor_cor":             cor do cursor de texto no editor
+  },
+
+  "editor": {
+    "fundo":                    cor de fundo do editor,
+    "fundo_calha":              cor de fundo da calha de números de linha,
+    "texto":                    cor do texto do editor,
+    "linha_ativa_fundo":        cor de fundo da linha onde o cursor está,
+    "numero_linha":             cor dos números de linha inativos,
+    "numero_linha_ativo":       cor do número de linha da linha ativa,
+    "invisivel":                cor dos caracteres invisíveis (espaços, tabs),
+    "guia_quebra_linha":        cor da linha guia de comprimento máximo,
+    "selecao":                  cor de fundo da seleção de texto,
+    "busca_match":              cor dos resultados de busca (use transparência: #RRGGBBAA),
+    "busca_match_ativo":        cor do resultado de busca ativo (use transparência),
+    "git_adicionado":           cor dos marcadores git — linha adicionada,
+    "git_modificado":           cor dos marcadores git — linha modificada,
+    "git_deletado":             cor dos marcadores git — linha deletada,
+    "erro":                     cor de sublinhado de erro (vermelho),
+    "aviso":                    cor de sublinhado de aviso (amarelo),
+    "info":                     cor de sublinhado de informação (azul),
+    "sucesso":                  cor de indicadores de sucesso (verde),
+    "ctrl_click_hover_texto":   cor do texto ao Ctrl+hover (ir para definição),
+    "ctrl_click_hover_fundo":   cor de fundo ao Ctrl+hover (geralmente "transparent"),
+    "ctrl_click_destino_fundo": cor do fundo ao chegar no destino de Ctrl+click,
+    "sintaxe": {
+      "palavra_chave":        keywords (if, for, def, class, import…),
+      "funcao":               nome de funções na definição e chamada,
+      "string":               strings literais,
+      "chave_json":           chaves de objetos JSON,
+      "numero":               literais numéricos,
+      "comentario":           comentários de uma linha (#),
+      "comentario_estilo":    "italic" ou "normal",
+      "docstring":            docstrings / comentários de múltiplas linhas,
+      "tipo":                 tipos (int, str, List, Dict, etc.),
+      "variavel":             variáveis comuns (geralmente igual ao texto),
+      "variavel_especial":    self, cls, __init__, __name__…,
+      "constante":            constantes (ALL_CAPS, True, False, None),
+      "operador":             operadores (+, -, ==, !=, and, or…),
+      "propriedade":          atributos de objeto (obj.propriedade),
+      "atributo":             decoradores e atributos de classe,
+      "booleano":             True, False,
+      "pontuacao":            pontuação geral (vírgula, ponto, dois-pontos),
+      "pontuacao_parentese":  parênteses ( ),
+      "pontuacao_colchete":   colchetes [ ],
+      "pontuacao_chave":      chaves { },
+      "string_escape":        sequências de escape (\n, \t, \\…),
+      "string_regex":         expressões regulares,
+      "tag":                  tags HTML/XML,
+      "namespace":            módulos e namespaces (os.path, json…)
+    }
+  },
+
+  "terminal": {
+    "fundo":            cor de fundo do terminal integrado,
+    "texto":            cor do texto padrão do terminal,
+    "texto_brilhante":  cor do texto brilhante (bold) do terminal,
+    "texto_fraco":      cor do texto secundário do terminal,
+    "selecao":          cor da seleção de texto no terminal,
+    "cores_ansi": {
+      "preto":            cor ANSI 0  (fundo de caixas, separadores),
+      "preto_brilhante":  cor ANSI 8  (texto fraco),
+      "vermelho":         cor ANSI 1  (erros, alertas críticos),
+      "vermelho_brilhante": cor ANSI 9,
+      "verde":            cor ANSI 2  (sucesso),
+      "verde_brilhante":  cor ANSI 10,
+      "amarelo":          cor ANSI 3  (avisos),
+      "amarelo_brilhante": cor ANSI 11,
+      "azul":             cor ANSI 4  (informação),
+      "azul_brilhante":   cor ANSI 12,
+      "magenta":          cor ANSI 5  (destaque especial),
+      "magenta_brilhante": cor ANSI 13,
+      "ciano":            cor ANSI 6  (links, paths),
+      "ciano_brilhante":  cor ANSI 14,
+      "branco":           cor ANSI 7  (texto normal),
+      "branco_brilhante": cor ANSI 15 (texto principal)
+    },
+    "link_url":    cor de URLs clicáveis no terminal,
+    "link_caminho": cor de caminhos de arquivo clicáveis
+  },
+
+  "terminal_run": {
+    "fundo":            cor de fundo do painel de execução (Run),
+    "texto_saida":      cor do texto de saída padrão (stdout),
+    "texto_erro":       cor do texto de erro (stderr),
+    "texto_sucesso":    cor de mensagens de sucesso,
+    "texto_info":       cor de mensagens informativas,
+    "texto_aviso":      cor de mensagens de aviso,
+    "texto_separador":  cor das linhas separadoras entre execuções,
+    "link_url":         cor de URLs,
+    "link_caminho":     cor de caminhos de arquivo
+  },
+
+  "painel_arquivos": {
+    "fundo":              cor de fundo do file tree,
+    "fundo_grad_meio":    cor intermediária de gradiente (pode ser igual ao fundo),
+    "fundo_grad_fim":     cor final de gradiente (pode ser igual ao fundo),
+    "texto":              cor do texto de arquivos e pastas,
+    "texto_fraco":        cor do texto secundário,
+    "texto_destaque":     cor do texto em destaque (arquivos modificados),
+    "item_hover":         cor do item ao hover,
+    "item_selecionado":   cor do item selecionado,
+    "icone_pasta":        cor dos ícones de pasta,
+    "icone_arquivo":      cor dos ícones de arquivo genérico,
+    "icone_python":       cor dos ícones de arquivos .py,
+    "icone_json":         cor dos ícones de arquivos .json,
+    "cabecalho_fundo":    cor de fundo do cabeçalho do painel,
+    "cabecalho_texto":    cor do texto do cabeçalho,
+    "rodape_texto":       cor do texto do rodapé
+  },
+
+  "painel_outline": {
+    "fundo":                cor de fundo do painel de outline,
+    "fundo_cabecalho":      cor de fundo do cabeçalho,
+    "texto":                cor do texto dos itens,
+    "texto_fraco":          cor do texto secundário,
+    "item_hover":           cor do item ao hover,
+    "item_selecionado":     cor do item selecionado,
+    "filtro_fundo":         cor de fundo do campo de filtro,
+    "filtro_texto":         cor do texto no campo de filtro,
+    "filtro_placeholder":   cor do placeholder do filtro,
+    "cor_classe":           cor dos itens do tipo classe,
+    "cor_funcao":           cor dos itens do tipo função,
+    "cor_metodo":           cor dos itens do tipo método,
+    "cor_metodo_privado":   cor dos métodos privados (__dunder__),
+    "cor_chave_json":       cor das chaves em arquivos JSON,
+    "cor_objeto_json":      cor dos objetos JSON,
+    "cor_tag_xml":          cor das tags XML/HTML,
+    "cor_item":             cor de itens genéricos,
+    "botao_texto":          cor dos botões de ação,
+    "botao_hover":          cor dos botões ao hover,
+    "rodape_texto":         cor do texto do rodapé
+  },
+
+  "painel_git": {
+    "fundo":                cor de fundo do painel Git,
+    "fundo_cabecalho":      cor de fundo do cabeçalho,
+    "texto":                cor do texto principal (geralmente igual à cor de sucesso),
+    "texto_fraco":          cor do texto secundário,
+    "texto_destaque":       cor do texto em destaque,
+    "item_hover":           cor do item ao hover,
+    "item_selecionado":     cor do item selecionado,
+    "cor_adicionado":       cor dos arquivos adicionados (verde),
+    "cor_modificado":       cor dos arquivos modificados (amarelo),
+    "cor_deletado":         cor dos arquivos deletados (vermelho),
+    "cor_nao_rastreado":    cor dos arquivos não rastreados (cinza),
+    "cor_branch":           cor do nome da branch,
+    "botao_fundo":          cor de fundo dos botões secundários,
+    "botao_hover":          cor dos botões ao hover,
+    "botao_texto":          cor do texto dos botões,
+    "botao_commit_fundo":   cor de fundo do botão de commit (verde),
+    "botao_commit_hover":   cor do botão de commit ao hover,
+    "botao_commit_texto":   cor do texto do botão de commit,
+    "input_fundo":          cor de fundo dos inputs de texto,
+    "input_texto":          cor do texto nos inputs,
+    "input_placeholder":    cor do placeholder dos inputs,
+    "terminal_fundo":       cor de fundo do mini terminal git,
+    "terminal_texto":       cor do texto do mini terminal git,
+    "terminal_hora":        cor do timestamp no mini terminal
+  },
+
+  "painel_ia": {
+    "fundo":                    cor de fundo do painel de IA,
+    "fundo_cabecalho":          cor de fundo do cabeçalho,
+    "fundo_mensagem_usuario":   cor de fundo das mensagens do usuário,
+    "fundo_mensagem_ia":        cor de fundo das respostas da IA,
+    "fundo_input":              cor de fundo do campo de entrada,
+    "texto":                    cor do texto principal,
+    "texto_fraco":              cor do texto secundário,
+    "texto_destaque":           cor do texto em destaque,
+    "texto_usuario":            cor do texto das mensagens do usuário,
+    "texto_ia":                 cor do texto das respostas da IA,
+    "borda_input_foco":         cor da borda do input quando em foco,
+    "botao_enviar_fundo":       cor de fundo do botão enviar,
+    "botao_enviar_hover":       cor do botão enviar ao hover,
+    "botao_enviar_texto":       cor do texto do botão enviar,
+    "cor_codigo":               cor do código inline nas respostas,
+    "fundo_codigo":             cor de fundo de blocos de código,
+    "fundo_salvo":              cor de fundo de confirmação de salvo,
+    "hein_cor":                 cor especial da marca "hein" no painel
+  },
+
+  "log": {
+    "ok":    cor das mensagens de log de sucesso (verde),
+    "info":  cor das mensagens de log informativas (azul),
+    "aviso": cor das mensagens de log de aviso (amarelo),
+    "erro":  cor das mensagens de log de erro (vermelho)
+  },
+
+  "grafo": {
+    "no_fundo":  cor de fundo dos nós do grafo de dependências,
+    "no_borda":  cor da borda dos nós,
+    "no_texto":  cor do texto dentro dos nós,
+    "seta":      cor das setas de conexão
+  },
+
+  "menu_contexto": {
+    "fundo":             cor de fundo do menu de contexto (botão direito),
+    "texto":             cor do texto dos itens,
+    "texto_hover":       cor do texto ao hover,
+    "texto_desativado":  cor do texto de itens desativados,
+    "item_hover":        cor de fundo do item ao hover,
+    "icone":             cor dos ícones do menu,
+    "item_selecionado":  cor de fundo do item selecionado,
+    "separador":         cor das linhas separadoras,
+    "borda":             cor da borda do menu
+  }
+}
+
+
+PRINCÍPIOS DE DESIGN PARA TEMAS DA HEIN
+-----------------------------------------
+
+1. PALETA RAIZ
+   Defina antes de tudo: cor de fundo principal, cor de texto, e no máximo
+   5 cores de acento (primary, success/verde, warning/amarelo, error/vermelho,
+   secondary/roxo ou ciano). Todas as outras cores derivam dessas.
+
+2. HIERARQUIA DE PROFUNDIDADE
+   Temas escuros:  fundo < fundo_painel < toolbar < aba_ativa < hover < selecionado
+   Temas claros:   fundo > fundo_painel > toolbar > inputs > hover > selecionado
+   Nunca inverta a hierarquia — confunde o olho do usuário.
+
+3. CONTRASTE MÍNIMO
+   • Texto sobre fundo: mínimo 4.5:1 (WCAG AA)
+   • Texto_fraco (placeholders): mínimo 3:1
+   • Syntax highlight: cada token deve ser distinguível dos vizinhos
+
+4. IDENTIDADE TEMÁTICA
+   A paleta de síntaxe deve ser coerente com a identidade do tema.
+   Ex: "Cerrado" usa laranjas queimados e verdes oliva, não azuis neon.
+   Os 5 tokens mais vistos no código (palavra_chave, funcao, string, numero,
+   comentario) devem ser os mais polidos e equilibrados.
+
+5. CONSISTÊNCIA ENTRE SEÇÕES
+   Se "verde" representa sucesso na seção "log", ele deve representar
+   sucesso em TODAS as seções (git, terminal, editor, painel_ia).
+   Não use a mesma cor para coisas diferentes.
+
+6. TRANSPARÊNCIA EM BUSCA
+   busca_match e busca_match_ativo usam hex de 8 dígitos (RRGGBBAA).
+   Use transparência entre 33 e 66 (hex). Exemplo: #C85A1055
+
+7. CORES ANSI DO TERMINAL
+   Mapeamento obrigatório de semântica:
+   vermelho → erros,  verde → sucesso,  amarelo → aviso,
+   azul → info,  magenta → destaque especial,  ciano → links/paths
+   preto/preto_brilhante → texto fraco / separadores
+   branco/branco_brilhante → texto principal
+
+8. TEMA CLARO vs ESCURO
+   Temas claros: fundo entre #F0 e #FF, texto entre #10 e #50.
+   Temas escuros: fundo entre #00 e #25, texto entre #C0 e #FF.
+   Não crie "temas escuros" com fundo #555 — isso é cinza médio, não escuro.
+
+
+TEMAS EXISTENTES (não recriar, apenas referência)
+--------------------------------------------------
+  Brasil:
+    goias_dia.json          "Goiás · Dia"           claro
+    goias_noite.json        "Goiás · Noite"         escuro
+    rio_de_janeiro_dia.json "Rio de Janeiro · Dia"  claro
+    rio_de_janeiro_noite.json "Rio de Janeiro · Noite" escuro
+    sao_paulo_dia.json      "São Paulo · Dia"       claro
+    sao_paulo_noite.json    "São Paulo · Noite"     escuro
+    cafe_com_leite.json     "Café com Leite"        claro
+    cerrado.json            "Cerrado"               claro
+    amazonia.json           "Amazônia"              escuro
+    sertao.json             "Sertão"                claro
+    litoral.json            "Litoral"               claro
+
+  Clássicos:
+    escuro_classico.json    "Escuro · Clássico"     escuro
+    claro_classico.json     "Claro · Clássico"      claro
+    noite_fechada.json      "Noite Fechada"         escuro
+    branco_limpo.json       "Branco Limpo"          claro
+    monokai_vivo.json       "Monokai · Clássico"    escuro
+
+  Especial (não alterar):
+    tema_padrao.json        "Tema Padrão"           escuro
+
+
+COMO CRIAR UM NOVO TEMA
+------------------------
+1. Copie a estrutura do tema_padrao.json como base.
+2. Defina sua paleta raiz: 1 bg + 1 text + 5 accents.
+3. Preencha "interface" derivando todas as cores da paleta raiz.
+4. Preencha "editor.sintaxe" — os tokens devem ter contraste entre si.
+5. Preencha "terminal.cores_ansi" respeitando a semântica obrigatória.
+6. Copie as seções restantes adaptando as cores conforme a paleta.
+7. Valide: o JSON deve ter exatamente as 229 chaves do formato acima.
+8. Nomeie o arquivo em snake_case sem acentos. Ex: meu_tema.json
+
+==================================CONSIDEAÇÕES FINAIS==============================================
+POR CAUSA DA ESTUTURA E ESTILO DAS LINHAS DAS BORDAS E ABAS ESTILO NAVEGADORES.
+AS CORES DAS CHAVES ABAIXO TEM QUE TER OS VALORES IGUAIS:
+    A COR COLOCADA EM "editor"/ "fundo_calha:..   VC COLOCA EM  "painel_arquivos"/ "fundo":
+    A COR COLOCADA EM "editor"/ "fundo:..         VC COLOCA EM  "interface"/ "fundo_aba_ativa":...

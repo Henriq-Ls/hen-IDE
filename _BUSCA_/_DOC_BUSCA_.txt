@@ -1,0 +1,138 @@
+# 📁 _BUSCA_/_DOC_BUSCA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _BUSCA_ — DOCUMENTAÇÃO DO MÓDULO
+  Última atualização: 2026-07-16 (Sessão 27: sistema de marcação — #marcação abre painel terminal)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Sistema de busca unificada da hein IDE.
+Recebe um termo digitado na BarraCentral, detecta o tipo de busca pelo prefixo,
+e despacha para o módulo especializado correto, devolvendo lista de
+ResultadoBusca prontos para exibição no PainelResultados.
+
+
+RESPONSABILIDADES
+─────────────────
+• Detectar o prefixo do termo e rotear para o sub-módulo certo (dispatcher)
+• Buscar arquivos por nome fuzzy no projeto aberto
+• Buscar texto em todos os arquivos do projeto via grep (QThread, não bloqueia UI)
+• Navegar diretamente para uma linha do arquivo atual (:N)
+• Listar comandos da IDE filtrando por texto (command palette)
+• Listar marcações (#TODO / #LEMBRAR / #CONSERTAR / #FAZER / #GAMBIARRA) espalhadas no projeto
+• Exibir arquivos recentes quando o campo de busca está vazio
+• Cancelar GrepThread ativa ao iniciar nova busca ou fechar painel
+
+
+ARQUIVOS
+────────
+  __init__.py          → exporta MotorBusca (público do módulo)
+  modelo_resultado.py  → TipoBusca (Enum) + ResultadoBusca (dataclass)
+  motor_busca.py       → MotorBusca — dispatcher central com roteamento por prefixo
+  busca_arquivos.py    → buscar_arquivos(), buscar_recentes() — fuzzy por nome
+  busca_simbolos.py    → buscar_simbolos() — implementada; usa ast.parse para
+                          extrair FunctionDef + ClassDef do arquivo atual
+  busca_grep.py        → GrepThread (QThread) — busca de texto em arquivos
+  busca_linha.py       → buscar_linha() — converte ":N" em ResultadoBusca de linha
+  busca_comandos.py    → buscar_comandos() — command palette da IDE
+  busca_anotacoes.py   → buscar_anotacoes() + AnotacoesThread — coleta marcações
+                          Tags: TODO, LEMBRAR, CONSERTAR, FAZER, GAMBIARRA
+                          Aceita #TAG: / #TAG - / #TAG (case-insensitive)
+                          _parsear_filtro() extrai filtro_tag + filtro_texto do termo
+
+
+FLUXO INTERNO
+─────────────
+Usuário digita na BarraCentral
+  │
+  ▼
+MainWindow._ao_buscar_global(termo)
+  │
+  ▼
+MotorBusca.buscar(termo, cb_resultados, cb_grep, cb_grep_fim)
+  │
+  ├─ termo vazio            → buscar_recentes()        → cb_resultados(lista)
+  │
+  ├─ começa com ":"         → buscar_linha(t)          → cb_resultados(lista)
+  │
+  ├─ começa com ">"         → buscar_comandos(t, janela) → cb_resultados(lista)
+  │
+  ├─ começa com "@"         → cb_resultados([])
+  │                            GrepThread(t[1:], raiz)
+  │                            .resultado_encontrado → cb_grep (acrescenta)
+  │                            .busca_concluida      → cb_grep_fim
+  │
+  ├─ começa com "#marcação" → cb_resultados([])
+  │    (ou "#marcacao")       AnotacoesThread(t, raiz)
+  │                           .resultado_encontrado → cb_grep (streaming)
+  │                           .busca_concluida      → cb_grep_fim
+  │                           "#marcação" sozinho = todas as 5 tags
+  │                           "#marcação consertar" = filtra texto dentro das marcações
+  │                           "#CONSERTAR" = filtra por tag específica
+  │
+  └─ texto livre            → buscar_arquivos(t, raiz) → cb_resultados(lista)
+                               GrepThread(t, raiz)     → cb_grep  (paralelo)
+
+Cada sub-módulo retorna list[ResultadoBusca].
+O PainelResultados recebe via cb_resultados (sincrono) ou cb_grep (streaming).
+
+
+SINAIS / API PÚBLICA
+────────────────────
+
+  PainelResultados
+    [Signal] item_clicado(arquivo: str, linha: int)
+             Emitido ao clicar num resultado de busca.
+             Conectado a: main_window._ao_selecionar_resultado_busca()
+
+  BarraCentral
+    [Signal] buscar_global(termo: str)
+             Emitido ao confirmar busca na barra central.
+             Conectado a: main_window._ao_buscar_global()
+
+  API PÚBLICA (chamada de _APP_/main_window.py):
+    MotorBusca.buscar(termo, modo, raiz, max_resultados)
+    MotorBusca.cancelar_grep()
+    MotorBusca.set_projeto(caminho: str)
+
+
+INTEGRAÇÕES
+───────────
+• _APP_/barra_buscas.py   → BarraCentral emite buscar_global(termo); PainelResultados
+                            exibe os resultados e emite item_clicado
+• _APP_/main_window.py    → cria MotorBusca, conecta sinais da BarraCentral,
+                            chama _ao_selecionar_resultado_busca() no clique
+• _CONFIGURA_/__init__.py → sem dependência direta; motor usa apenas stdlib + PySide6
+• _LOG_/log.py            → motor_busca.py usa log.info() no set_projeto()
+
+
+REGRAS
+──────
+• NUNCA chamar buscar() na thread principal com operações pesadas — grep vai pra QThread
+• cancelar_grep() SEMPRE chamado antes de iniciar nova busca
+• ResultadoBusca.linha é 0-indexed (linha - 1 do arquivo real)
+• GrepThread.parar() define flag; wait(200) aguarda encerramento limpo
+• Prefixo "*" antes do termo remove o asterisco antes de passar para buscar_arquivos()
+• busca_simbolos.py está implementada — usa ast.parse com FunctionDef + ClassDef
+• Extensões ignoradas pelo grep: qualquer extensão fora de _EXTENSOES
+• Pastas ignoradas: .git, __pycache__, .venv, node_modules, .idea
+• Limite padrão do grep: 50 resultados (síncrono); 500 (AnotacoesThread)
+• Todos os logs via _LOG_/log.py — NUNCA print()
+• Tags de marcação SEMPRE em maiúsculas no código; busca é case-insensitive
+• AnotacoesThread usa isInterruptionRequested() para cancelamento cooperativo
+• _parsear_filtro(termo): "#marcação" → ("",""); "#marcação foo" → ("","foo");
+  "#CONSERTAR" → ("consertar",""); texto livre → ("", texto)
+
+
+OBSERVAÇÕES
+───────────
+• O módulo não tem widget próprio — a UI fica em _APP_/barra_buscas.py
+• GrepThread emite resultado_encontrado por linha encontrada (streaming progressivo)
+• buscar_anotacoes() é síncrona (os.walk) — usada apenas como fallback sem cb_grep
+• AnotacoesThread (streaming, QThread) é usada quando cb_grep está disponível
+• buscar_comandos() não usa o projeto — só recebe referência à janela para executar ações
+• O campo de busca da BarraCentral tem dois modos: global (prefixos) e arquivo (Ctrl+F);
+  apenas o modo global passa pelo MotorBusca
+• Fluxo do #marcação espelha o do @: limpar() → abrir_aba_busca_global() → buscar() com cb_grep

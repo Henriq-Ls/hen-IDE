@@ -1,0 +1,25 @@
+{
+  "ambiente": {
+    "pasta_venv": ".venv",
+    "site_packages_windows": "Lib/site-packages",
+    "site_packages_linux": "lib/site-packages"
+  },
+  "snippets": {
+    "se_principal": "if __name__ == '__main__':\n    ",
+    "classe": "class ${1:NomeClasse}:\n    def __init__(self$2):\n        $0",
+    "funcao": "def ${1:nome_funcao}($2):\n    $0",
+    "tentar": "try:\n    \nexcept Exception as e:\n    print(e)",
+    "importar": "import "
+  },
+  "fontes_appdata": {
+    "palavras": [
+      "palavras.txt"
+    ],
+    "simbolos": [
+      "simbolos.json"
+    ],
+    "emojis": [
+      "emojis.json"
+    ]
+  }
+}

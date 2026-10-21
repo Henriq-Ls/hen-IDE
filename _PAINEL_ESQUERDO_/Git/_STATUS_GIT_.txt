@@ -1,0 +1,191 @@
+# 📁 _PAINEL_ESQUERDO_/Git/_STATUS_GIT_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _PAINEL_ESQUERDO_/Git
+Última atualização: 2026-08-07 (troca de remoto pela lista GitHub e exclusão remota segura)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# STATUS DO MÓDULO
+
+## IMPLEMENTADO
+
+### Núcleo Git
+  - Autenticação OAuth Device Flow (git_autentica.py)
+  - Persistência de token em %APPDATA%\hein\github_config.json
+  - Login automático nas sessões seguintes
+  - API GitHub REST v3 (git_api.py): obter usuário, listar repos,
+    criar repositório, obter repositório e apagar repositório
+  - Publicar projeto existente no GitHub (push inicial)
+  - Clonar repositório remoto e abrir na IDE
+  - Criar projeto novo com repositório no GitHub
+  - Commit via git add + git commit (git_gerente.py)
+  - Push para GitHub
+  - Pull com recarga automática dos arquivos abertos
+  - Histórico de commits (_JanelaHistorico)
+  - Restauração de versão via git checkout <hash>
+  - CHANGELOG.md criado junto com VERSION na publicação inicial (b__git_ui_conta)
+  - registrar_changelog_commit() chamado após commit bem-sucedido em _ao_salvar()
+    (painel Git bumpa VERSION antes do commit; utilitário só escreve CHANGELOG)
+  - registrar_push() chamado após push bem-sucedido em _ao_enviar()
+  - Ambas as chamadas via _UTILITARIOS_/versionamento.py (thread-safe, RLock)
+  - Terminal de log interno colorido (git_terminal.py)
+  - _DialogPublicar: nome, descrição e visibilidade antes de criar repo
+  - Navegação entre 3 telas (git_ui.py)
+  - _acao_criar_repo() — execução em background thread; botões
+    bloqueados durante operação; falha trata None no callback
+  - Sessão GitHub reutilizada pela tela de boas-vindas, sem Device Flow duplicado.
+  - Clone, push, pull e remoto HTTPS preservam a URL normal; credencial temporária
+    é criada apenas durante a operação e removida no final.
+  - Respostas OAuth completas não são registradas no log.
+  - Configuração global do Git não persiste credenciais automaticamente.
+
+  - GerenciadorGit.limpar_cache_gitignore(pasta):
+    Remove do índice Git arquivos rastreados que agora estão no .gitignore.
+    Usa git ls-files -i --exclude-standard para encontrar os arquivos;
+    executa git rm --cached -r -- <lista>. NÃO apaga arquivos do disco.
+    Usuário deve fazer commit depois para registrar a remoção.
+
+### Aba Status
+  - Agrupamento de arquivos em árvore por pasta; __pycache__ começa
+    recolhido; arquivos na raiz ficam direto no grupo pai
+  - Cabeçalhos "Prontos para salvar" e "Com alterações"
+    (antes "Preparados"/"Modificados" — jargão git inacessível)
+  - Prefixo "S" removido dos arquivos staged (redundante após
+    agrupamento por cabeçalho)
+  - Botão filtro "_arquivos" — oculta arquivos _*, __pycache__,
+    .pyc. Ativo por padrão.
+  - Botões expandir todos / recolher todos
+  - Tooltip na árvore indicando menu de botão direito
+  - Menu de contexto: Preparar / Descartar mudanças / Remover da fila
+  - Botões "Preparar tudo" / "Remover tudo"
+  - Botão "🧹 Limpar .gitignore" com tooltip explicativo em português:
+    aparece abaixo de "Preparar tudo / Remover tudo"; chama
+    _limpar_gitignore() → git_gerente.limpar_cache_gitignore();
+    exibe resultado no terminal e recarrega lista
+
+### Aba Diferenças
+  - Lista de arquivos agrupada em árvore por pasta (igual ao Status)
+  - Botão filtro "_arquivos" — oculta __pycache__ e _* por padrão
+  - Botões expandir todos / recolher todos na lista
+  - Diff sem cabeçalhos técnicos do git: as linhas "diff --git",
+    "index c1489ae..", "--- a/", "+++ b/" não aparecem mais
+  - Linha @@ reescrita como "┄ linha -X,Y +X,Y  nome_funcao"
+    em vez do formato bruto do git
+  - Arquivo binário mostra "Arquivo binário — sem diferenças de
+    texto legíveis" em vez de "Binary files ... differ"
+  - Sem diff encontrado mostra "Sem diferenças encontradas"
+  - Barra de busca no diff com destaque amarelo e contador.
+    Limpa ao trocar de arquivo.
+  - Painel de lista e viewer redimensionáveis via QSplitter
+
+### Aba Ramificações
+  - Separação visual LOCAL / REMOTO com cabeçalhos
+  - Locais expandidas por padrão; remotas recolhidas
+  - Remotas não acionam checkout direto
+  - Menu de contexto: Mudar para / Mesclar / Excluir
+
+### Aba Guardados
+  - Menu de contexto com linguagem não-git:
+    "Usar e tirar da lista" / "Usar (manter na lista)" /
+    "Excluir item guardado"
+
+### Aba Arquivo
+  - Histórico do arquivo aberto no editor
+  - Viewer readonly com numeração de linha embutida
+  - Barra de busca com destaque de ocorrências
+  - Muda automaticamente ao trocar aba no editor
+  - encoding utf-8 errors=replace no _executar
+
+### Painel esquerdo (barra superior)
+  - Botão Salvar: sem segundo diálogo de patch/minor.
+    Versão incrementada automaticamente como patch.
+    Usuário digita só a mensagem do commit.
+  - "Deletar repositório" removido do menu do projeto —
+    estava ao lado de "Abrir no GitHub" (um clique errado
+    destruía o repositório no GitHub)
+   - Ação remota mantida na aba Repositório com o nome explícito
+     "Apagar repositório no GitHub"; exige sessão, validação e confirmação.
+     A exclusão é executada pela GitHubAPI em segundo plano e só remove o
+     origin local depois de sucesso.
+   - "Trocar repositório" não pede mais URL manual: lista os repositórios da
+     conta GitHub ativa, permite selecionar um e confirma a substituição do
+     origin local sem apagar arquivos.
+  - Sinal abrir_painel_git conectado em base.py também a
+    PainelArquivos.entrar_modo_staging() — abre checkboxes
+    na FileTree ao clicar no botão "Main"
+
+### Qualidade de código
+  - Todo QMessageBox.question() trocado por HeinPopup.confirmar()
+  - QMessageBox removido dos imports; HeinPopup importado de
+    _UTILITARIOS_/hein_pou_pap.py
+  - Todos emojis e símbolos Unicode em botões removidos do texto;
+    substituídos por icone_tema("mdi.xxx") de _UTILITARIOS_/icones.py
+  - Todos emojis em ações de menu de contexto removidos do texto;
+    substituídos por action.setIcon(icone_tema("mdi.xxx"))
+  - _atualizar_info(): removido bloco duplicado que buscava branch
+    e log duas vezes e sobrescrevia o label duas vezes
+  - Popup ? de ajuda: reescrito em HTML com tabela e ícones
+
+
+## EM DESENVOLVIMENTO
+  [nenhum no momento]
+
+
+## PENDENTE / PRÓXIMA ORDEM  🔲
+  1. Chamar conectar_painel_git(git_ui_projeto) na main_window para ativar
+     o botão Git da barra lateral direita
+  2. Conectar hook pre-push ao Núcleo quando _NUCLEO_ estiver pronto
+  3. Conectar arquivos_staging_selecionados() ao fluxo de commit
+     (git add seletivo por arquivo em vez de git add .)
+
+
+## BUGS CORRIGIDOS
+
+  BUG-GIT-03  _acao_sair_conta chamava revogar_token() — método inexistente.
+              Fix: trocado por limpar_sessao(). Adicionado set_callback_sair +
+              _cb_sair em GitUIProjeto. git_ui.py conecta ao _ir_para_entrar.
+              Resultado: sair da conta → tela volta ao login.
+              Arquivos: c__git_ui_projeto.py, git_ui.py
+
+
+## PROBLEMAS CONHECIDOS
+  - Restaurar versão coloca o repositório em "detached HEAD".
+    Não há botão para retornar ao main — usuário precisa usar
+    o terminal integrado manualmente.
+  - Arquivos rastreados antes do .gitignore: continuam no git status
+    até o usuário usar "🧹 Limpar .gitignore" e fazer um commit.
+
+
+--- 2026-07-18 Sessão 35: CHANGELOG.md + integração versionamento compartilhado ---
+✅ b__git_ui_conta.py: criar_changelog_inicial() chamado junto com criação do VERSION
+✅ c__git_ui_projeto.py: registrar_changelog_commit() em _ao_salvar._concluido (r.ok)
+✅ c__git_ui_projeto.py: registrar_push() em _ao_enviar._concluido (r.ok)
+✅ Ambas as chamadas via _UTILITARIOS_.versionamento (thread-safe, RLock de módulo)
+✅ BUG-GIT-03: _acao_sair_conta corrigido (limpar_sessao + callback)
+
+--- 2026-07-19: Botão Limpar .gitignore + integração staging FileTree ---
+✅ git_gerente.py: GerenciadorGit.limpar_cache_gitignore(pasta)
+   git ls-files -i --exclude-standard → lista rastreados no .gitignore
+   git rm --cached -r -- <lista> → remove do índice sem apagar do disco
+✅ c__git_ui_projeto.py _PainelStatus: botão "🧹 Limpar .gitignore"
+   Tooltip em português explica o que acontece e que os arquivos não são apagados
+   _limpar_gitignore(): chama git_gerente, exibe no terminal, recarrega lista
+✅ git_ui.py / base.py: sinal abrir_painel_git conectado também a
+   PainelArquivos.entrar_modo_staging() — ativa checkboxes na FileTree
+   ao abrir o terminal Git (botão "Main")
+
+--- 2026-08-07 Sessão [INFORMAÇÃO NÃO CONFIRMADA]: integração GitHub na tela inicial ---
+✅ janela_picker.py: estado GitHub, Device Flow compartilhado e contas salvas
+✅ janela_picker.py: repositórios recarregados ao trocar ou sair da conta
+✅ git_gerente.py: clone, push e pull com credencial temporária sem token na URL
+✅ git_gerente.py: remoto persistido com URL normal e logs OAuth sem corpo sensível
+✅ dialogo_novo_projeto.py: clone da tela inicial unificado com GerenciadorGit
+
+--- 2026-08-07: troca e exclusão de repositório pelo painel do projeto ---
+✅ c__git_ui_projeto/_projeto.py: seleção de repositório da conta ativa,
+   sem URL manual, com confirmação antes de substituir o origin.
+✅ git_api.py: método deletar_repositorio() pela API REST do GitHub.
+✅ Exclusão remota confirmada em thread; arquivos locais permanecem intactos.
+✅ hein-basic/CONTEXTO_CONTINUACAO_GITHUB.md: instruções para a próxima IA.
+⚠️ O escopo OAuth precisa conter delete_repo. Após essa alteração, a conta
+   deve sair e entrar novamente para renovar o token antes de apagar.

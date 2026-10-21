@@ -1,0 +1,24 @@
+{
+  "_comentario": "Digite :nome no editor para inserir o emoji. Adicione quantos quiser.",
+
+  "fogo":       "🔥",
+  "ok":         "✅",
+  "atencao":    "⚠️",
+  "erro":       "❌",
+  "info":       "ℹ️",
+  "ideia":      "💡",
+  "coracao":    "❤️",
+  "estrela":    "⭐",
+  "dinheiro":   "💰",
+  "relogio":    "⏰",
+  "cadeado":    "🔒",
+  "chave":      "🔑",
+  "engrenagem": "⚙️",
+  "lupa":       "🔍",
+  "seta":       "➡️",
+  "seta_cima":  "⬆️",
+  "seta_baixo": "⬇️",
+  "festa":      "🎉",
+  "foguete":    "🚀",
+  "bug":        "🐛"
+}

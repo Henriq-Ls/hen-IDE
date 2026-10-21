@@ -1,0 +1,41 @@
+# 📁 Pasta autocompletar — hein IDE
+# ════════════════════════════════════════════════════════════════════════════
+
+Esta pasta existe para VOCÊ adicionar seus próprios dicionários de autocomplete.
+A IDE detecta e carrega tudo automaticamente — sem reiniciar.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TIPOS DE ARQUIVO SUPORTADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • meuarquivo.emoji.json
+      Dicionário de emojis.
+      Formato: { "nome": "emoji" }
+      Gatilho: digite :nome no editor  →  :fogo  →  🔥
+      O : é apagado automaticamente na inserção.
+
+  • meuarquivo.symbols.json
+      Dicionário de símbolos matemáticos, setas, etc.
+      Formato: { "nome": "símbolo" }
+      Gatilho: mesma lógica dos emojis  →  :alpha  →  α
+
+  • meuarquivo.wordlist.txt
+      Lista de palavras do domínio do seu projeto.
+      Formato: uma palavra por linha. Linhas com # são comentários.
+      Aparecem normalmente no autocomplete ao digitar qualquer prefixo.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  • Você pode ter VÁRIOS arquivos de cada tipo — todos são mesclados.
+  • Arquivos com nome começando em _ (underscore) são ignorados.
+  • A pasta é vigiada: edite, salve, e o autocomplete atualiza sozinho.
+  • Nunca apague este arquivo _LEIA-ME.txt — ele ajuda futuros usuários.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LOCALIZAÇÃO NO SEU COMPUTADOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Windows:  %APPDATA%\hein\autocompletar\
+  Linux:    ~/.config/hein/autocompletar/   (futuro)

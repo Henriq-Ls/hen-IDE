@@ -1,0 +1,154 @@
+# 📁 _TRADUTION_/_DOC_TRADUTION_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _TRADUTION_ — DOCUMENTAÇÃO DO MÓDULO
+  Última atualização: 2026-08-05
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Motor offline de tradução de mensagens de erro Python, pip e shell
+de Inglês para Português. Funciona sem internet, sem IA e sem modelos
+pesados — usa cascata de 5 camadas determinísticas otimizadas para
+erros técnicos (não texto genérico).
+
+
+RESPONSABILIDADES
+─────────────────
+• Traduzir erros Python (SyntaxError, ImportError, AttributeError etc.)
+• Traduzir output de pip (installing, error, warning, help, conflitos)
+• Traduzir mensagens de shell PowerShell
+• Preservar variáveis, caminhos, nomes de arquivo e blocos de código
+• Manter contexto técnico intacto (stack trace, números de linha)
+
+
+ARQUIVOS
+────────
+  tradutor_erros.py           | Fachada pública — re-exporta traduzir() de _motor.py
+                              | Import: from _TRADUTION_.tradutor_erros import traduzir
+                              | Este arquivo NUNCA muda.
+
+  _motor.py                   | Orquestrador da cascata de camadas
+                              | Entrada: traduzir(texto: Any) → str
+                              | _traduzir_str() é a função interna cacheada
+                              | Cache: lru_cache(maxsize=512) — mesma linha
+                              |   repetida no terminal custa zero na 2ª vez
+
+  _dados/camada0_pre.py       | Pré-processamento + proteção (_Cofre)
+                              | normalizar_underscores(): converte underscores
+                              |   isolados (?<!\w)_(?!\w) → espaço
+                              |   Preserva: __init__, win_amd64, no_such_file
+                              |   (variantes com underscore estão no C1)
+                              | proteger(): esconde em tokens \x00TN\x00:
+                              |   1. aspas simples e duplas
+                              |   2. caminhos Windows/Unix
+                              |   3. linhas de código indentadas (4+ espaços)
+                              |   4. nomes de erro Python (NameError etc.)
+                              |   5. pacotes pip (requests-2.28.0)
+                              |   6. versões numéricas (3.11.2, v2.0.1)
+
+  _dados/camada1_frases.py    | ~875 pares (inglês, português) de frases exatas
+                              | Busca case-insensitive com re.escape (sem \b)
+                              | Frases mais longas devem vir ANTES de subfrases
+                              | Categorias cobertas:
+                              |   Python exceptions, pip, pip help (linhas fixas),
+                              |   pip help General Options (fragmentos por linha),
+                              |   pip conflitos de dependência, rede, HTTP, SSL,
+                              |   Windows/PowerShell, Git, Docker, Django, SQLite,
+                              |   pyflakes, async, numpy/scipy, pandas,
+                              |   requests/urllib3, SQLAlchemy, pytest
+                              | ⚠️ C1 não tem word boundary — entradas curtas
+                              |   podem bater dentro de palavras maiores.
+                              |   Palavras soltas devem ir para o C3.
+
+  _dados/camada2_regex.py     | 70 padrões compilados para erros com variáveis
+                              | Ex: "name 'X' is not defined" → "nome 'X' não está definido"
+                              | Grupos: pip download/collect, numpy shapes/broadcast/
+                              |   reshape/index, pytest collected/passed/failed/errors,
+                              |   pip conflito de dependência (Cannot install X and Y),
+                              |   ConnectionRefusedError, File/line traceback
+
+  _dados/camada3_palavras.py  | ~500 palavras individuais (fallback)
+                              | Usa \b word boundary em todas as entradas
+                              | Frases multi-palavra vêm ANTES de palavras simples
+                              | ⚠️ Não adicionar palavras que aparecem dentro de
+                              |   termos técnicos portugueses já usados pelo C1
+                              |   (ex: "have" batia em "chave")
+
+  _dados/camada4_pos.py       | Pós-processamento após restauração do Cofre:
+                              | restaurar(): devolve tokens → texto original
+                              | remover_redundancias(): elimina "Erro: Erro:"
+                              | corrigir_capitalizacao(): capitaliza 1ª letra
+                              |   ⚠️ Pula linhas que começam com espaço/tab
+                              |   (código do traceback restaurado pelo Cofre)
+                              | limpar_artefatos(): remove espaços duplos
+
+  _testes.py                  | 76 casos de regressão automatizados
+                              | Roda com: python -m _TRADUTION_._testes
+                              | Cobre todas as 19 categorias do C1
+                              | Também verifica idempotência do cache LRU
+                              | Exit code 0 = tudo ok / 1 = há falhas
+
+
+FLUXO INTERNO
+─────────────
+traduzir(texto: Any) → str
+  │
+  ├─ str(texto)                           ← converte qualquer tipo para str
+  │
+  └─ _traduzir_str(texto: str)            ← função cacheada (lru_cache 512)
+       │
+       ├─ C0a: normalizar_underscores()   ← underscores isolados → espaço
+       │
+       ├─ C2: regex com capture groups    ← padrões dinâmicos (70 padrões)
+       │
+       ├─ C1: frases exatas               ← ~875 frases, case-insensitive
+       │
+       ├─ C0b: proteger()                 ← guarda paths/código em tokens
+       │
+       ├─ C3: palavra a palavra           ← ~500 palavras, com \b
+       │
+       └─ C4: restaurar + limpar          ← devolve tokens, capitaliza, limpa
+
+
+SINAIS / API PÚBLICA
+────────────────────
+[Função] traduzir(texto: Any) → str
+  — único ponto de entrada público
+  — importar SEMPRE de _TRADUTION_.tradutor_erros (nunca de _motor diretamente)
+  — aceita qualquer tipo; internamente converte para str antes do cache
+
+
+INTEGRAÇÕES
+───────────
+• _TERMINAIS_/terminal_run.py        → traduz output de execução de scripts Python
+• _TERMINAIS_/terminal_powershell.py → traduz output do shell PowerShell
+• _EDITOR_/Outline/painel_outline.py → traduz mensagens de SyntaxError na status bar
+
+
+REGRAS
+──────
+• NUNCA chamar modelos de IA — tradução é 100% offline e determinística
+• O _Cofre protege strings literais ANTES do C3
+  — nunca traduzir conteúdo dentro de aspas ou caminhos de arquivo
+• Ordem das camadas é estrita:
+    C0a → C2 → C1 → C0b → C3 → C4
+• Adicionar novas traduções:
+    frases longas → camada1_frases.py
+    padrões com variáveis → camada2_regex.py
+    palavras soltas → camada3_palavras.py
+• Antes de adicionar ao C1: verificar se alguma palavra do output
+  existe no C3 (buscar com grep) — pode causar re-tradução indesejada
+• Depois de qualquer mudança: rodar _testes.py e confirmar 76/76 ✅
+
+
+OBSERVAÇÕES
+───────────
+• TRADUTOR_ERROS_DOCUMENTACAO.md documenta a história completa e
+  decisões arquiteturais — leitura recomendada antes de expandir
+• "Tradution" (com t) é grafado assim intencionalmente (nome do módulo)
+• A camada de regex (C2) tem prioridade sobre frases (C1) porque vem antes
+• pip --help quebra descrições longas em múltiplas linhas — cada linha
+  chega separada ao traduzir(). O C1 tem entradas para cada fragmento.
+• Em português: "Erro: Erro:" é detectado como redundância e limpo pelo C4

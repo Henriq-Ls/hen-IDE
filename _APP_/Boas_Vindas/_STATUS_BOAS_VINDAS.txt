@@ -1,0 +1,58 @@
+# 📁 _APP_/Boas_Vindas/_STATUS_BOAS_VINDAS.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BOAS_VINDAS — STATUS DO MÓDULO
+  Última atualização: 2026-08-07 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: integração GitHub na tela inicial)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPLEMENTADO  ✅
+────────────────
+• JanelaPicker leve para boot sem projeto e para diálogo de troca dentro do editor.
+• No boot, o projeto escolhido é aberto pela MainWindow no mesmo processo do
+  picker; o lançador separado fica reservado para abrir outra janela/projeto.
+• Operações pesadas do picker são acionadas por ação explícita do usuário.
+• Busca de interpretadores Python, criação de venv e clone Git usam workers separados.
+• Criação de projeto gera a estrutura configurada, incluindo templates de arquivos e pastas.
+• Encerramento da janela usa WA_DeleteOnClose, hide() imediato e closeEvent() para
+  desconectar sinais e agendar destruição segura de threads Qt.
+• Coluna central do GitHub exibe o estado da conta e oferece login opcional pelo
+  Device Flow compartilhado do módulo Git.
+• Contas salvas podem ser trocadas, adicionadas ou desconectadas sem apagar as
+  demais contas; a lista de repositórios é reiniciada ao mudar de sessão.
+• Clone iniciado pela tela de boas-vindas usa o serviço seguro compartilhado do
+  Git, preservando a URL normal e removendo a credencial temporária ao terminar.
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item de implementação registrado nesta documentação)
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+─────────────────────────────
+1. Investigar o relato de 0x8001010d ainda observado durante o boot, após o carregamento
+   do tema, conforme CONTEXTO.txt.
+2. Validar em Windows que o picker desaparece sem deixar ícone ou janela fantasma.
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• O erro Windows 0x8001010d ainda foi relatado no boot, embora a aplicação continue
+  funcionando; a causa específica deste caso permanece em investigação.
+
+REGRAS CRÍTICAS DESTE MÓDULO
+─────────────────────────────
+• Não iniciar threads pesadas no __init__ de JanelaPicker; ações de rede, clone e
+  descoberta de Python só podem começar após ação explícita do usuário.
+• No boot, não relançar a IDE para abrir o primeiro projeto: emitir o caminho
+  para main.py e trocar o picker pela MainWindow no mesmo processo.
+• Dentro de uma IDE já aberta, abrir outro projeto em nova janela usa
+  exclusivamente abrir_projeto_novo_processo().
+• Ao trocar de projeto, ocultar o picker antes de iniciar o novo processo e preservar
+  o fechamento seguro das threads no closeEvent().
+
+--- 2026-08-07 Sessão [INFORMAÇÃO NÃO CONFIRMADA]: arquitetura de abertura ---
+✅ janela_picker.py: fluxo boot/dialog, ciclo de vida e abertura inicial no mesmo processo
+✅ lancador_projeto.py: lançamento único de processos documentado
+✅ dialogo_novo_projeto.py: criação, templates, venv e workers documentados
+
+--- 2026-08-07 Sessão [INFORMAÇÃO NÃO CONFIRMADA]: integração GitHub na tela inicial ---
+✅ janela_picker.py: estado da conta, Device Flow compartilhado e menu de contas
+✅ janela_picker.py: lista de repositórios reiniciada após login, troca ou logout
+✅ dialogo_novo_projeto.py: clone encaminhado ao serviço Git seguro compartilhado

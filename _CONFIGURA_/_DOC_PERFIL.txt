@@ -1,0 +1,316 @@
+# 📁 _CONFIGURA_/_DOC_PERFIL.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hen IDE — Sistema de Perfil do Usuário e Primeiro Acesso
+Última atualização: 2026-07-14
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+
+Documentar, de ponta a ponta, o fluxo de primeiro acesso da hen IDE
+(cadastro de nome/e-mail/pasta de projetos) e o novo sistema de perfil
+do usuário — o que foi encontrado quebrado, o que foi corrigido, o que
+foi criado do zero, e como tudo se encaixa hoje.
+
+Este documento existe porque o perfil estava, originalmente, misturado
+dentro do arquivo genérico de configurações visuais (configurar.json),
+o que ia virar um problema conforme o perfil crescesse (integração com
+site, chat, git, avatar, etc.). Ele foi separado em um arquivo próprio.
+
+─────────────────────────────────────────────────────────────────
+# VISÃO GERAL — ANTES x DEPOIS
+─────────────────────────────────────────────────────────────────
+
+ANTES (quebrado):
+  - Tela de primeiro acesso pedia nome, e-mail, CHAVE DE LICENÇA e pasta.
+  - A validação da chave bloqueava o uso caso não batesse com o HWID.
+  - Várias funções internas estavam com bugs (caminho de config errado,
+    salvar_configurar() sem retorno, schema de gravação não combinando
+    com o que o resto do app esperava ler).
+  - obter_nome_usuario() era chamada por 2 arquivos (saudações da tela
+    de boas-vindas) mas NUNCA EXISTIA — ImportError silencioso.
+  - Perfil vivia dentro de configurar.json (bloco "perfil"), junto com
+    configurações de fonte/UI que não tem nada a ver com o usuário.
+
+DEPOIS (atual):
+  - hen está em fase gratuita: primeiro acesso só coleta nome, e-mail
+    e pasta de projetos. Não bloqueia nada. Chave de ativação ainda é
+    gerada e guardada por baixo dos panos, para quando cobrar de fato.
+  - Perfil do usuário mora em um arquivo próprio: perfil.json.
+  - configurar.json volta a ser só sobre fonte/UI/editor/terminal, como
+    o nome sugere.
+  - Todas as funções de perfil têm retorno de sucesso (bool) e podem
+    ser conferidas pelo chamador.
+
+─────────────────────────────────────────────────────────────────
+# ONDE O PERFIL VIVE — perfil.json
+─────────────────────────────────────────────────────────────────
+
+Caminho em runtime (definido em _CONFIGURA_/__init__.py):
+  ARQUIVO_PERFIL = PASTA_APPDATA/perfil.json
+
+  PASTA_APPDATA muda sozinha conforme o ambiente:
+    - Executando o .py (dev/sandbox) → .../AppData/Roaming/hen_sandbox/
+    - Executando o .exe compilado    → .../AppData/Roaming/hen/
+
+Esquema completo (todo campo tem um valor padrão, nunca fica faltando
+chave mesmo que o perfil seja antigo e um campo novo tenha sido criado
+depois):
+
+  {
+    "nome": "",
+    "email": "",
+    "idioma": "pt-BR",
+    "avatar": "",
+    "github": "",
+    "saudacao_personalizada": "",
+    "pasta_projetos": "",
+    "data_criacao": "",
+    "ativacao": {
+      "chave": "",
+      "data_ativacao": "",
+      "status": "gratuito"
+    },
+    "git": {
+      "nome": "",
+      "email": ""
+    },
+    "extras": {}
+  }
+
+  - nome / email .......... dados básicos coletados no primeiro acesso.
+  - idioma ................ idioma da interface (hoje só pt-BR é usado,
+                             campo já existe pra internacionalização futura).
+  - avatar ................ caminho/URL da imagem de avatar do usuário.
+  - github ................ username do GitHub p/ exibir no perfil (NÃO
+                             é o token OAuth — isso fica em
+                             _APPDATA_/gerenciador.py::github_config,
+                             arquivo github_config.json, separado).
+  - saudacao_personalizada . frase customizável de boas-vindas
+                             (ex.: "Bem-vindo de volta, {nome}!").
+  - pasta_projetos ......... pasta padrão onde novos projetos são criados.
+  - data_criacao ........... data (ISO) em que o perfil foi criado.
+  - ativacao.chave ......... chave local gerada por gerar_chave_licenca()
+                             (HWID + e-mail + salto secreto). Guardada
+                             pra quando a fase gratuita acabar.
+  - ativacao.data_ativacao . quando a chave foi gerada por 1ª vez.
+  - ativacao.status ........ "gratuito" hoje; ficará "pago"/"expirado"
+                             quando a licença cobrada existir de fato.
+  - git.nome / git.email ... identidade de commit do usuário (autor dos
+                             commits feitos de dentro da IDE) — CAMPO
+                             DIFERENTE do "github" (aquele é a conta/
+                             username, este é a assinatura do commit).
+  - extras ................. dict livre. Qualquer integração futura
+                             (site, chat, preferências novas) deve usar
+                             este bloco antes de inventar chave nova no
+                             nível raiz — ou, se for algo permanente e
+                             usado por muitos módulos, promover para o
+                             esquema oficial em _perfil_padrao().
+
+─────────────────────────────────────────────────────────────────
+# gerenciador_perfil.py — API pública
+─────────────────────────────────────────────────────────────────
+
+  obter_caminho_perfil() -> str
+      Caminho absoluto do perfil.json (= ARQUIVO_PERFIL).
+
+  ler_perfil() -> dict
+      Lê o perfil.json. Se o arquivo ainda não existir, tenta migrar
+      automaticamente dados de um perfil antigo (ver seção MIGRAÇÃO).
+      Se não houver nada pra migrar, devolve o esquema padrão vazio.
+      NUNCA lança exceção — falha de leitura devolve o padrão.
+
+  salvar_perfil_completo(dados: dict) -> bool
+      Grava o dict inteiro em perfil.json, mesclando com o que já
+      existe (não apaga campo que não foi passado) e completando
+      qualquer chave do esquema que esteja faltando. Retorna True/False.
+
+  salvar_perfil(nome: str, email: str, chave_ativacao: str = "") -> bool
+      Usada pela tela de primeiro acesso. Atualiza nome/email/chave e
+      preenche data_criacao/data_ativacao automaticamente na 1ª vez.
+      Não toca nos demais campos (avatar, idioma, git, etc.).
+
+  obter_perfil() -> dict
+      Retorna o perfil inteiro (equivalente a ler_perfil()).
+
+  obter_nome_usuario() -> str
+      Nome salvo, ou "Usuário" se ainda não houver cadastro.
+      Usada por utilitarios_perfil.py e painel_boas_vindas.py para
+      montar saudações ("Bom dia, {nome}!").
+
+  salvar_caminho_projetos(caminho: str) -> bool
+  obter_caminho_projetos() -> str
+      Pasta padrão de novos projetos. Se não houver nada salvo,
+      obter_caminho_projetos() devolve ~/hen_Projetos como padrão.
+
+─────────────────────────────────────────────────────────────────
+# MIGRAÇÃO AUTOMÁTICA (usuários que já cadastraram antes)
+─────────────────────────────────────────────────────────────────
+
+Quem já tinha usado a IDE antes desta mudança tinha o perfil salvo
+dentro do configurar.json (bloco "perfil" + chave "caminho_projetos"
+no nível raiz). Para não obrigar recadastro:
+
+  1. ler_perfil() checa: perfil.json existe? Se sim, usa ele direto.
+  2. Se não existe, chama _migrar_perfil_antigo():
+       - Abre o configurar.json ativo (AppData).
+       - Se tiver bloco "perfil" ou "caminho_projetos", extrai nome,
+         email, chave_ativacao e caminho_projetos.
+       - Monta um perfil novo (esquema atual) com esses dados.
+       - REMOVE os blocos "perfil"/"caminho_projetos" do configurar.json
+         (ele volta a ser só sobre UI) e regrava o arquivo.
+  3. O perfil migrado é salvo em perfil.json e devolvido normalmente.
+
+Se o usuário nunca tinha cadastrado nada (instalação nova), não há o
+que migrar — ler_perfil() devolve o esquema padrão vazio e a tela de
+primeiro acesso aparece normalmente.
+
+Essa migração roda sozinha, sem intervenção do usuário, e só acontece
+uma vez (depois que perfil.json existe, o passo 2 nunca mais roda).
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS DE FÁBRICA vs ARQUIVOS ATIVOS
+─────────────────────────────────────────────────────────────────
+
+Isso confundiu bastante durante a conversa, então fica registrado aqui:
+
+  - _CONFIGURA_/*.json  → são os TEMPLATES DE FÁBRICA. Vivem dentro do
+    próprio código-fonte da IDE (pasta do pacote). NÃO são o arquivo
+    que a IDE lê/escreve enquanto você usa — só servem de "molde".
+
+  - AppData/*.json (Roaming/hen ou Roaming/hen_sandbox) → são os
+    ARQUIVOS ATIVOS de verdade, lidos e escritos em runtime.
+
+  Ligação entre os dois, feita por _APPDATA_/estrutura.py:
+    - _JSONS_CONFIG  → lista de arquivos copiados de _CONFIGURA_/ para
+      AppData/ na primeira execução, SE o destino ainda não existir.
+      Agora inclui "perfil.json".
+    - _JSONS_DEFAULT → lista de arquivos copiados de _CONFIGURA_/ para
+      AppData/default/, usados por "restaurar configurações de fábrica".
+      Também inclui "perfil.json" agora.
+
+  E em _APPDATA_/gerenciador.py:
+    - _MAPA_RESTORE → dict que o botão/comando "restaurar padrão" usa
+      pra saber qual arquivo de AppData/default/ copiar de volta.
+      Agora tem a entrada "perfil": ("perfil.json", "perfil.json").
+
+  Regra prática: qualquer arquivo JSON novo do tipo "configuração que
+  o usuário pode restaurar/resetar" precisa aparecer NOS TRÊS lugares
+  acima, senão instalação nova não é semeada e "restaurar padrão" não
+  encontra o arquivo.
+
+─────────────────────────────────────────────────────────────────
+# TELA DE PRIMEIRO ACESSO — _APP_/janela_primeiro_acesso.py
+─────────────────────────────────────────────────────────────────
+
+Campos: nome, e-mail, pasta de projetos. HWID é mostrado (copiável) só
+como referência futura — não é mais exigido nem validado.
+
+Fluxo do botão "Começar a usar":
+  1. Valida nome (não vazio, não "usuário") e e-mail (tem "@").
+  2. Cria a pasta de projetos se não existir.
+  3. Gera a chave local: gerar_chave_licenca(hwid, email) — mesma
+     fórmula usada por gerenciador_licenca.py e pelo script manual
+     gerador_chaves.py (raiz do projeto). Isso é só pra já deixar a
+     chave prevista guardada; NÃO há cobrança nem bloqueio hoje.
+  4. salvar_perfil(nome, email, chave) + salvar_caminho_projetos(caminho).
+  5. Só fecha a tela (accept()) se as duas gravações retornarem True.
+
+Quando a hen virar paga de verdade: trocar o passo 3 por uma chave
+emitida por servidor/você mesmo, e voltar a validar antes do accept().
+
+─────────────────────────────────────────────────────────────────
+# LICENÇA — _CONFIGURA_/gerenciador_licenca.py
+─────────────────────────────────────────────────────────────────
+
+  obter_hwid() ................. ID único da máquina (registro do
+                                  Windows; fallback por hash de CPU+MAC
+                                  em outros SOs).
+  gerar_chave_licenca(hwid, email) → chave determinística
+                                  (SHA-256 de hwid+email+salto secreto,
+                                  formatada XXXX-XXXX-XXXX-XXXX).
+  verificar_licenca_local() .... lê perfil.json via obter_perfil() e
+                                  confere se a chave salva bate com a
+                                  esperada para o HWID atual. Hoje NÃO
+                                  é chamada em nenhum fluxo de bloqueio
+                                  (fase gratuita) — existe pronta pra
+                                  quando for necessário validar de novo.
+
+─────────────────────────────────────────────────────────────────
+# SAUDAÇÕES — quem consome o nome do perfil
+─────────────────────────────────────────────────────────────────
+
+  _APP_/utilitarios_perfil.py    → gerar_saudacao(), saudacao_longa()
+  _APP_/painel_boas_vindas.py    → painel exibido na tela inicial
+
+  Ambos chamam obter_nome_usuario() de gerenciador_perfil.py. Nenhum
+  outro arquivo do projeto lê ou escreve o nome do usuário — foram
+  conferidos via grep em toda a árvore antes de fechar essa mudança.
+
+  IMPORTANTE: o "nome" usado na criação de um NOVO PROJETO
+  (_APP_/dialogo_novo_projeto.py, _APP_/main_window/mixin_projeto.py)
+  é o nome do PROJETO digitado pelo usuário naquele momento — não tem
+  relação com o nome do perfil. São dois conceitos parecidos no nome
+  da variável, mas totalmente independentes.
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS MODIFICADOS E CRIADOS NESTA FRENTE DE TRABALHO
+─────────────────────────────────────────────────────────────────
+
+Modificados:
+  _CONFIGURA_/__init__.py
+      + constante ARQUIVO_PERFIL (caminho do perfil.json em AppData).
+
+  _CONFIGURA_/gerenciador_perfil.py
+      Reescrito do zero. Antes: lia/escrevia a seção "perfil" dentro
+      de configurar.json, com bugs de caminho/retorno/schema. Agora:
+      dono exclusivo de perfil.json, com esquema completo, migração
+      automática e todas as funções retornando bool de sucesso.
+
+  _CONFIGURA_/gerenciador_licenca.py
+      verificar_licenca_local() passou a ler de obter_perfil()
+      (perfil.json) em vez de configurar.json via config_global().
+
+  _CONFIGURA_/configurar.json (arquivo de fábrica)
+      Removido o bloco "perfil" que tinha ficado esquecido aqui
+      (esquema antigo, com "github"/"avatar_path"/"data_inicio_uso").
+      Também corrigida, antes disso, uma vírgula faltante que
+      invalidava o JSON inteiro.
+
+  _APP_/janela_primeiro_acesso.py
+      Removido campo/validação de chave de licença (fase gratuita).
+      Corrigidas chamadas a salvar_perfil()/salvar_configurar() que
+      não combinavam com as assinaturas reais das funções.
+
+  _APPDATA_/estrutura.py
+      "perfil.json" adicionado a _JSONS_CONFIG (semeadura em 1º uso)
+      e a _JSONS_DEFAULT (base pra "restaurar padrão").
+
+  _APPDATA_/gerenciador.py
+      "perfil" adicionado a _MAPA_RESTORE, apontando pra perfil.json.
+
+Criados:
+  _CONFIGURA_/perfil.json (arquivo de fábrica)
+      Template padrão copiado pro AppData na primeira execução —
+      mesmo esquema descrito acima, todos os campos vazios/padrão.
+
+  gerador_chaves.py (raiz do projeto)
+      Já existia, estava com uma linha corrompida (NameError). Corrigido.
+      Script manual/standalone: gera uma chave a partir de HWID + e-mail
+      digitados à mão, reaproveitando a mesma fórmula de
+      gerenciador_licenca.gerar_chave_licenca(). Útil pra gerar chaves
+      de teste sem abrir a IDE.
+
+  _CONFIGURA_/_DOC_PERFIL.txt (este arquivo)
+      Documentação do sistema de perfil e primeiro acesso.
+
+─────────────────────────────────────────────────────────────────
+# LIMITAÇÕES DESTA VERIFICAÇÃO
+─────────────────────────────────────────────────────────────────
+
+Não há interpretador Python neste ambiente de edição — toda a
+verificação foi estática: parse de JSON, contagem de parênteses/
+chaves/colchetes balanceados, e grep cruzado pra garantir que nenhuma
+função removida/renomeada ainda é chamada em outro lugar do projeto.
+Teste funcional real (abrir a IDE de verdade) deve ser feito no seu
+ambiente Windows.

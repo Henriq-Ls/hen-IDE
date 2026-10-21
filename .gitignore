@@ -1,0 +1,9 @@
+# ==========.gitgnore
+__pycache__
+*.pyc
+*.bak
+.venv
+.hein
+.zed
+.github
+xxx___RedesSociais.txt

@@ -1,0 +1,189 @@
+# 📁 _PAINEL_ESQUERDO_/FileTree/_STATUS_FILETREE_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — Módulo _PAINEL_ESQUERDO_.FileTree
+  Última atualização: 2026-07-19 (Sessão: Status Git em pastas + Staging visual)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+────────────────
+• QTreeView + _IconProvider (QFileSystemModel) + _ProxyOrdem
+• Ícones por extensão com suporte a packs (_PACK_ATIVO)
+• Cache de ícones (_cache_icones) global ao módulo _auxiliares
+• Ícones especiais: .venv → mdi.package-variant (#8BC34A),
+                    .hein → mdi.folder-cog (#7E57C2)
+• _ProxyOrdem: .venv no topo (rank 0), .hein segundo (rank 1),
+  pastas antes de arquivos
+• Indicadores Git por arquivo via _WorkerGit(QObject) em QThread
+  (badge circular: + novo · ~ modificado · × deletado)
+• Indicadores Git nas PASTAS — herdam o status mais crítico dos filhos:
+  deletado(3) > modificado/renomeado(2) > novo(1)
+  Implementado em _WorkerGit.rodar() após o loop de arquivos
+• Texto colorido por status git via _DelegateGit (arquivos e pastas)
+• Timer git de 5s automático enquanto projeto aberto
+• "Adicionar ao Git" no menu → git add <arquivo>
+
+• Modo staging integrado à FileTree:
+    - entrar_modo_staging(): ativa checkboxes nos arquivos rastreáveis
+    - sair_modo_staging(): volta ao visual normal
+    - Ativação: sinal abrir_painel_git (botão "Main" do Git)
+    - Desativação: ao trocar para aba Núcleo ou Exec.
+    - Clique em arquivo rastreável togla o checkbox (não abre arquivo)
+    - Pastas expandem/colapsam normalmente mesmo em staging
+    - Checkbox desenhado com PE_IndicatorCheckBox nativo do Qt
+    - Botões "✓ Marcar tudo" / "□ Desmarcar tudo" na barra_acoes
+      (ocultos por padrão, visíveis apenas em modo staging)
+    - arquivos_staging_selecionados() → lista de caminhos marcados
+    - staging_checks: dict compartilhado por referência com _DelegateGit
+
+• Menu de contexto completo via heinContextMenu:
+    Executar (.py)
+    ────────────────
+    Novo Arquivo        (Shift+F1)
+    Nova Pasta          (Shift+F2)
+    ────────────────
+    Copiar              (Ctrl+C)
+    Colar               (Ctrl+V)  — desabilitado se clipboard vazio
+    Duplicar            (Ctrl+D)  — desabilitado se nada selecionado
+    ────────────────
+    Copiar Caminho      → clipboard do sistema (caminho absoluto)
+    ────────────────
+    Renomear            (F2 / Shift+F3)
+    Apagar              (Delete)
+    Desfazer            (Ctrl+Z)  — desabilitado se histórico vazio
+    ────────────────
+    Mostrar no Explorador
+    Abrir no Navegador (.html)
+    Adicionar ao Git (se .git existir)
+    ────────────────
+    Enviar para IA
+    Restaurar último apagado / Esvaziar Lixeira
+
+• Menu da lixeira dedicado ao clicar em .hein/lixeira/
+• Rename inline via _tree.edit() (sem popup) + _ao_renomear_inline
+  conectado a model.fileRenamed → atualiza abas abertas
+• Apagar → .hein/lixeira/ (nunca deleta permanentemente)
+• Ctrl+Z (desfazer) → pilha _historico: delete / rename / colar / duplicar
+• Restaurar item específico da lixeira via QFileDialog
+• Esvaziar lixeira com confirmação
+• Drag-and-drop InternalMove para mover arquivos/pastas
+
+• Atalhos de teclado via eventFilter:
+    F2          → renomear inline
+    Shift+F1    → novo arquivo (pasta do item selecionado)
+    Shift+F2    → nova pasta  (pasta do item selecionado)
+    Shift+F3    → renomear inline (alias de F2)
+    Delete      → apagar (move para lixeira)
+    Ctrl+C      → copiar (clipboard interno)
+    Ctrl+V      → colar
+    Ctrl+Z      → desfazer
+    Ctrl+D      → duplicar (gera nome_copia.ext na mesma pasta)
+
+• Foco devolvido à árvore após clique simples em arquivo
+  (QTimer.singleShot → _tree.setFocus) — garante que os atalhos
+  continuem funcionando após o editor trocar de aba
+
+• barra_acoes (QHBoxLayout separado) entre MenuRecenteProjeto e a
+  árvore com botões: ajuda / expandir tudo / colapsar tudo /
+  filtrar / Marcar tudo / Desmarcar tudo (últimos dois ocultos fora do staging)
+
+• Indentação da árvore: 12px (era 22)
+• QShortcuts Ctrl+Alt+± removidos (conflitavam com o editor)
+• Sinais: arquivo_selecionado, arquivo_clicado_simples,
+          arquivo_enviado_para_ia, executar_arquivo
+• Clique simples → arquivo_clicado_simples (nunca abre duplicata)
+• Clique simples em pasta → toggle expand/colapso
+• revelar_arquivo(): expande todos os pais + scrollTo + select
+• _filtrar_arvore(): expandAll + nameFilters; colapsa ao limpar
+• set_projeto(): mostra nome truncado + tamanho total em MB
+• _atualizar_tamanho_venv(): exibe tamanho da .venv no display
+• trocar_pack_icones(): recria model/proxy/delegate do zero
+  (delegate recriado com staging_checks e modo_staging preservados)
+• Tema com gradiente 3 pontos (ini/meio/fim) via paintEvent
+• Hot-reload de tema via atualizar_tema()
+• Pacote dividido em 5 módulos:
+    __init__.py / _auxiliares.py / _workers.py / _modelo.py / painel.py
+
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em andamento ativo)
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+──────────────────────────────
+1. Verificar se _atualizar_tamanho_venv() funciona na prática
+   (setData(DisplayRole) pode ser ignorado se _IconProvider não
+   sobrescrever Qt.DisplayRole)
+2. Confirmar comportamento do drag-and-drop quando se arrasta
+   para fora da raiz do projeto (pode mover para caminho errado)
+3. Menu "Abrir no terminal integrado" — hoje abre terminal do SO
+4. "Recortar" (Ctrl+X) — hoje só existe Copiar+Colar, não mover
+5. Conectar arquivos_staging_selecionados() ao fluxo de commit
+   do git_gerente (git add seletivo por arquivo)
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• _WorkerGit: falha silenciosa quando git não está no PATH ou
+  projeto não é repo git — nenhum indicador aparece, sem aviso
+• Colar (Ctrl+V) copia mas não move — não há "recortar" (Ctrl+X)
+• Arquivos rastreados antes de entrar no .gitignore continuam
+  aparecendo no staging — usuário deve usar "🧹 Limpar .gitignore"
+  no painel Git para removê-los do índice
+
+
+--- 2026-07-14 (sessão 1) ---
+✅ Refatoração: FileTree.py (~1.673 linhas) dividido em pacote FileTree/
+     __init__.py       — exporta PainelArquivos
+     _auxiliares.py    — helpers + MenuRecenteProjeto
+     _workers.py       — _WorkerGit
+     _modelo.py        — _IconProvider, _ProxyOrdem, _DelegateGit
+     painel.py         — PainelArquivos (classe principal)
+✅ .hein recebe prioridade 2ª e ícone mdi.folder-cog #7E57C2
+✅ Botões de ação em barra_acoes separada (entre topo e árvore)
+✅ Indentação 12px (era 22)
+✅ Drag-and-drop InternalMove habilitado
+✅ QShortcuts Ctrl+Alt+± removidos do FileTree
+✅ model.fileRenamed conectado a _ao_renomear_inline
+✅ Rename inline via _tree.edit() substituiu QInputDialog
+✅ Duplicatas de set_projeto / revelar_arquivo / _filtrar_arvore limpas
+
+--- 2026-07-16 Sessão 26: Performance — os.scandir em _WorkerTamanhoPasta ---
+✅ _workers.py _WorkerTamanhoPasta._tamanho_pasta(): os.walk substituído por
+   os.scandir + pilha explícita; mesmo padrão de nucleo_indice.py; mais eficiente
+   em árvores profundas (evita geração de lista intermediária do os.walk)
+
+--- 2026-07-14 (sessão 2) ---
+✅ barra_acoes movida para linha separada entre MenuRecenteProjeto e árvore
+   (botões NÃO estão dentro da barra de topo — insertWidget removido)
+✅ Clique simples devolve foco à árvore via QTimer.singleShot(0, setFocus)
+✅ Copiar / Colar / Desfazer adicionados ao menu de contexto
+✅ _copiar(caminho) criado como método próprio (antes era inline no eventFilter)
+✅ Ctrl+C no eventFilter agora chama _copiar() (consistência com menu)
+✅ Itens do menu desabilitados condicionalmente:
+   Colar → desabilitado se clipboard vazio ou caminho inexistente
+   Desfazer → desabilitado se _historico vazio
+   Copiar/Duplicar/Copiar Caminho → desabilitados se nada selecionado
+✅ Shift+F1 → novo arquivo / Shift+F2 → nova pasta / Shift+F3 → renomear
+✅ Ctrl+D → duplicar (gera nome_copia.ext, incrementa se necessário)
+✅ Duplicar adicionado ao menu de contexto (mdi.content-duplicate)
+✅ Copiar Caminho adicionado ao menu (mdi.link-variant) — usa QGuiApplication.clipboard()
+✅ _duplicar() e _copiar_caminho() implementados em painel.py
+
+--- 2026-07-19: Status Git em pastas + Staging visual ---
+✅ _workers.py: propagação de status para pastas pai após loop de arquivos
+   Prioridade: deletado(3) > modificado/renomeado(2) > novo(1)
+   Pastas entram no mesmo dict resultado — _DelegateGit já consome automaticamente
+✅ _modelo.py _DelegateGit: suporte a modo staging
+   Recebe staging_checks: dict (ref compartilhada) e set_modo_staging(bool)
+   Em paint(): se staging ativo + item em staging_checks → PE_IndicatorCheckBox
+   em vez do badge dot
+✅ painel.py PainelArquivos: modo staging completo
+   _modo_staging: bool + _staging_checks: dict adicionados ao __init__
+   Botões "✓ Marcar tudo" / "□ Desmarcar tudo" na barra_acoes (ocultos por padrão)
+   entrar_modo_staging() / sair_modo_staging() / arquivos_staging_selecionados()
+   _ao_clique_simples(): em staging, clique togla checkbox (não abre arquivo)
+   _eh_pasta_no_status(): detecta pastas no dict sem acessar disco
+   trocar_pack_icones(): delegate recriado já com staging_checks e estado atual

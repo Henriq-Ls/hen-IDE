@@ -1,0 +1,30 @@
+{
+  "_comentario": "Digite :nome no editor para inserir o símbolo. Adicione quantos quiser.",
+
+  "alpha":   "α",
+  "beta":    "β",
+  "gamma":   "γ",
+  "delta":   "δ",
+  "epsilon": "ε",
+  "pi":      "π",
+  "sigma":   "σ",
+  "omega":   "Ω",
+  "theta":   "θ",
+  "lambda":  "λ",
+  "mu":      "μ",
+  "phi":     "φ",
+
+  "seta_dir":  "→",
+  "seta_esq":  "←",
+  "seta_cima": "↑",
+  "seta_bai":  "↓",
+  "seta_dbl":  "⇒",
+  "aprox":     "≈",
+  "diferente": "≠",
+  "menor_ig":  "≤",
+  "maior_ig":  "≥",
+  "infinito":  "∞",
+  "raiz":      "√",
+  "grau":      "°",
+  "mais_menos":"±"
+}

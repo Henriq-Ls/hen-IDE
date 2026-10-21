@@ -1,0 +1,101 @@
+# 📁 _TRADUTION_/_STATUS_TRADUTION_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _TRADUTION_ — STATUS DO MÓDULO
+  Última atualização: 2026-08-05
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+────────────────
+• Motor de tradução offline (5 camadas) — totalmente funcional
+• camada0_pre: normalização de underscores + _Cofre (protege paths/strings)
+• camada1_frases: ~875 pares inglês→português (frases exatas)
+• camada2_regex: 70 padrões com captura de variáveis dinâmicas
+• camada3_palavras: ~500 palavras (fallback)
+• camada4_pos: restauração do Cofre + remoção de redundâncias
+• Integração em terminal_run.py — output de scripts traduzido
+• Integração em terminal_powershell.py — output de shell traduzido
+• Integração em painel_outline.py — SyntaxError traduzido na status bar
+• TRADUTOR_ERROS_DOCUMENTACAO.md — documentação técnica completa
+
+• camada1_frases: bloco numpy/scipy (shapes, contiguidade, broadcast)
+• camada1_frases: bloco pandas (truth value, reindex, indexador)
+• camada1_frases: bloco requests/urllib3 (SOCKS, redirects, proxy)
+• camada1_frases: bloco SQLAlchemy (sessão, transação, coluna ambígua)
+• camada1_frases: bloco pytest (resumo, rootdir, xfailed, setup/teardown)
+• camada1_frases: bloco pip help — linhas fixas de `pip --help`
+• camada1_frases: bloco pip resolver — conflitos de dependência
+• camada1_frases: fragmentos de linha do pip --help General Options
+  (cada opção tem entrada para a linha principal E para cada linha
+   de continuação com 32+ espaços — ~60 fragmentos novos)
+• camada1_frases: no_such_file e no_such_file_or_directory (variantes OS)
+• camada2_regex: padrão pip download progress (Downloading X.whl (N MB))
+• camada2_regex: padrão pip Collecting com especificador de versão
+• camada2_regex: padrões numpy (broadcast, reshape, index out of bounds, shapes)
+• camada2_regex: padrões pytest (collected N items, X passed/failed/errors in Ns)
+• camada2_regex: padrões pip conflito de dependência (Cannot install X and Y)
+• camada3_palavras: "have" adicionado com word boundary \b (movido do C1)
+• _motor.py: cache LRU — lru_cache(maxsize=512) em _traduzir_str()
+• _TRADUTION_/_testes.py — suite de 76 testes de regressão automatizados
+
+
+BUGS CORRIGIDOS  🔧
+────────────────────
+• C1 tinha ("have", "tem") sem word boundary → batia em c-have-
+  e produzia "ctem" no lugar de "chave". Movido para C3 com \b.
+• corrigir_capitalizacao() capitalizava código do traceback restaurado
+  pelo Cofre (ex: "    import numpy" → "    Import numpy"). Corrigido:
+  linhas que começam com espaço/tab são puladas.
+• C3 tinha "cache" definido duas vezes — linha 689 (mantinha "cache")
+  e linha 1358 (substituía por "armazenar em cache"). A segunda sobrescrevia
+  e produzia "o armazenar em cache do pip". Duplicata removida.
+
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em andamento ativo)
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+─────────────────────────────
+1. Traduzir output de debug DAP (mensagens do debugpy)
+2. Interface de contribuição — forma fácil de adicionar nova tradução
+   sem editar arquivos Python diretamente
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• Textos muito longos (stack traces multi-linha) são traduzidos linha
+  a linha — contexto entre linhas não é considerado, algumas frases
+  podem ficar gramaticalmente estranhas
+• Erros de C extensions (ex: numpy) geram mensagens em C que não
+  constam nas camadas — caem no fallback de palavras com qualidade baixa
+• pip --help: o nome do comando na coluna esquerda (ex: "inspect", "list")
+  é traduzido pelo C3 e aparece junto da descrição traduzida — visualmente
+  a palavra aparece duas vezes (ex: "inspecionar inspecionar o ambiente Python.")
+  Comportamento esperado dado o formato colunar do pip --help.
+
+
+REGRAS CRÍTICAS DESTE MÓDULO
+─────────────────────────────
+• Ordem das camadas é estrita e imutável:
+    C0a (underscores) → C2 (regex) → C1 (frases) → C0b (cofre) → C3 (palavras) → C4 (restaurar/limpar)
+• O _Cofre protege strings literais ANTES da Camada 3
+• Nunca chamar IA ou internet — tradução 100% offline e determinística
+• Ao adicionar entrada no C1, verificar se alguma palavra do output
+  existe no C3 e causaria re-tradução indesejada
+• Antes de qualquer expansão: rodar _testes.py e confirmar 76/76 passando
+
+--- 2026-06-29: Criação do _STATUS_TRADUTION_.txt ---
+✅ Documento criado com base na análise do código real e TRADUTOR_ERROS_DOCUMENTACAO.md
+
+--- 2026-08-05: Expansão da sessão anterior + correções de bugs ---
+✅ Cache LRU implementado no _motor.py
+✅ pip resolver/conflitos adicionados ao C1
+✅ ~60 fragmentos de linha do pip --help General Options adicionados ao C1
+✅ 3 novos padrões C2 para erros de conflito de dependência do pip
+✅ Bug "have/chave" corrigido (C1 → C3 com \b)
+✅ Bug capitalização de código do traceback corrigido (camada4_pos.py)
+✅ Bug "cache" duplicado no C3 corrigido
+✅ Suite de 76 testes automatizados criada (_testes.py)

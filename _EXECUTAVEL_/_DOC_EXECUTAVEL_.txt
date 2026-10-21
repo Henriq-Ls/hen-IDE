@@ -1,0 +1,56 @@
+# _EXECUTAVEL_ — build local e release de projetos
+
+## Objetivo
+
+Gerar executáveis a partir do projeto atualmente aberto na hein Basic IDE. A
+configuração e os artefatos de preparação ficam dentro do próprio projeto, em
+`.hein/executavel/`; nenhum build é executado contra a pasta de instalação da IDE.
+
+## Fluxos
+
+### Build local
+
+1. A aba Executável salva nome, versão, ícone e arquivo Python de entrada.
+2. ExecutavelExplorer lê a `.venv` do projeto e pode gerar `requirements.txt`,
+   árvore de arquivos, imports ocultos e dados de runtime.
+3. PyInstaller e `pyinstaller-versionfile` são instalados somente nessa `.venv`.
+4. Um `.spec` relativo à raiz do projeto é gerado e PyInstaller grava o resultado
+   em `dist/` (`--onefile` ou pasta onedir).
+
+O build local não exige Git nem sessão GitHub.
+
+### Release GitHub
+
+1. Gera `.github/workflows/release-executavel.yml` e o script autônomo
+   `.hein/executavel/build_ci.py`.
+2. Prepara apenas os arquivos do release com `git add -f`; o commit limita-se a
+   esses caminhos para não incluir alterações staged sem relação com o executável.
+3. Cria uma tag anotada e publica branch/tag com a sessão `config_github()`.
+   `GerenciadorGit.executar_autenticado()` usa o helper temporário existente.
+4. O workflow roda em `windows-latest`, cria o executável e publica o arquivo
+   `.exe` ou ZIP onedir como release.
+
+Tags remotas existentes são recusadas. A feature não faz `tag -f` nem force-push.
+Se o envio falhar depois da criação da tag local, uma nova tentativa só é aceita
+quando a tag aponta para o HEAD atual e os arquivos de release não mudaram.
+
+## Arquivos
+
+- `config.py`: padrão, leitura e gravação atômica do JSON por projeto.
+- `venv_projeto.py`: localiza `.venv` ou `venv` do projeto.
+- `arvore.py`, `requirements.py`: inspeção do projeto e dependências.
+- `exec_local/analise.py`: dados, dependências e imports para o bundle.
+- `exec_local/gerador_spec.py`: spec portátil e versão Windows.
+- `processo.py`: execução de processos de build em `_ThreadSegura`.
+- `release/gerador_workflow.py`: gera workflow e script de CI no projeto usuário.
+- `release/processo_release.py`: publica via API autenticada do gerenciador Git.
+- `painel_executavel.py`: campos básicos e seleção do modo local/release.
+- `_TERMINAIS_/executavel_explorer.py`: formulário avançado e saída do build.
+
+## Limites e validação
+
+- A validação end-to-end depende de uma `.venv`, Git e uma sessão GitHub válida.
+- O workflow publicado cria builds Windows; builds locais usam o sistema
+  operacional da IDE.
+- Ainda é necessário confirmar no Windows a execução real do PyInstaller e o
+  fluxo completo de publicação no GitHub Actions.

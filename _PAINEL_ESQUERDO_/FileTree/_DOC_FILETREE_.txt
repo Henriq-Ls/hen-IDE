@@ -1,0 +1,287 @@
+# 📁 _PAINEL_ESQUERDO_/FileTree/_DOC_FILETREE_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _PAINEL_ESQUERDO_.FileTree
+Última atualização: 2026-07-19 (Sessão: Status Git em pastas + Staging visual)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+# OBJETIVO
+Pacote responsável pela árvore de arquivos do projeto aberto.
+Exibe, navega e opera sobre arquivos e pastas via QTreeView.
+Antes era um único FileTree.py monolítico (~1.673 linhas);
+foi dividido em submódulos para facilitar manutenção.
+
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS DO PACOTE
+─────────────────────────────────────────────────────────────────
+
+  __init__.py          Exporta PainelArquivos.
+                       Único ponto de entrada:
+                         from _PAINEL_ESQUERDO_.FileTree import PainelArquivos
+
+  _auxiliares.py       Helpers de estilo e ícones; widget de barra superior.
+                         _c(chave, fb)            — lê cor do tema com fallback
+                         _estilo_btn_icone()      — stylesheet QPushButton ícone
+                         _estilo_barra()          — stylesheet barra de topo
+                         _estilo_btn_id(name)     — stylesheet por objectName
+                         _cache_icones: dict      — cache global de QIcon
+                         _qicon(nome, cor, tam)   — QIcon qtawesome com fallback
+                         MenuRecenteProjeto       — barra de topo do painel:
+                                                    botão de recentes + label
+                                                    do projeto aberto + botões
+                                                    de ação injetados via
+                                                    insertWidget()
+
+  _workers.py          Workers em thread separada.
+                         _WorkerGit(QObject)      — roda git status --porcelain
+                                                    em QThread; emite
+                                                    concluido(dict) com mapa
+                                                    {caminho_lower: status}
+                                                    para arquivos E pastas.
+                                                    Após o loop de arquivos,
+                                                    propaga status para pastas
+                                                    pai por prioridade:
+                                                    deletado(3) > modificado/
+                                                    renomeado(2) > novo(1).
+                                                    Pasta herda o status mais
+                                                    crítico de seus filhos.
+                         _WorkerTamanhoPasta(QObject) — calcula tamanho da
+                                                    .venv recursivamente usando
+                                                    os.scandir + pilha explícita
+                                                    (substituiu os.walk);
+                                                    mesmo padrão de nucleo_indice.py
+
+  _modelo.py           Modelos Qt da árvore.
+                         _IconProvider            — QFileSystemModel com data()
+                                                    sobrescrito: ícones qtawesome
+                                                    por extensão, pack ativo,
+                                                    ícones especiais (.venv, .hein)
+                         _ProxyOrdem              — QSortFilterProxyModel que pina
+                                                    .venv (topo 0) e .hein (topo 1)
+                                                    via _PRIORIDADE; pastas antes
+                                                    de arquivos
+                         _DelegateGit             — QStyledItemDelegate que colore
+                                                    o texto do item e pinta badge
+                                                    circular (+ ~ ×) com status git
+                                                    para arquivos E pastas.
+                                                    Em modo staging: desenha
+                                                    checkbox nativo Qt
+                                                    (PE_IndicatorCheckBox) nos
+                                                    arquivos rastreáveis em vez
+                                                    do badge dot.
+                                                    Parâmetros extras:
+                                                      staging_checks: dict  — ref
+                                                        compartilhada com painel
+                                                      set_modo_staging(bool) — liga/
+                                                        desliga modo staging
+
+  painel.py            Classe principal PainelArquivos.
+                       (ver seção RESPONSABILIDADES abaixo)
+
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES — PainelArquivos
+─────────────────────────────────────────────────────────────────
+
+  UI
+    - Barra de topo: MenuRecenteProjeto com botões ajuda/expandir/colapsar
+      injetados em _lay.insertWidget() (sem barra extra)
+    - barra_acoes com botões: ajuda / expandir / colapsar / filtrar /
+      "✓ Marcar tudo" / "□ Desmarcar tudo" (últimos dois ocultos por padrão,
+      visíveis apenas no modo staging)
+    - QTreeView com modelo _IconProvider + proxy _ProxyOrdem
+    - Indentação 12px; sem shortcuts Ctrl+Alt+± (conflitam com editor)
+    - Drag-and-drop InternalMove habilitado para mover arquivos/pastas
+
+  Navegação
+    - Duplo clique  → arquivo_selecionado(str)  — abre arquivo no editor
+    - Clique simples → arquivo_clicado_simples(str) — troca aba sem reabrir
+    - Clique simples em pasta → toggle expand/colapso
+    - Clique simples em modo staging → togla checkbox do arquivo rastreável
+    - F2 / menu "Renomear" → rename inline via _tree.edit() (sem popup)
+    - model.fileRenamed → _ao_renomear_inline() → registra no histórico
+      e atualiza abas abertas
+
+  Operações de arquivo
+    - Criar arquivo  — dialog com nome + combo de extensões
+    - Criar pasta    — dialog com checkbox __init__.py
+    - Apagar         — move para .hein/lixeira/ (recuperável via Ctrl+Z)
+    - Colar (Ctrl+V) — copia arquivo com nome único se já existir
+    - Desfazer (Ctrl+Z) — pilha _historico: delete/rename/colar
+    - Restaurar item da lixeira — QFileDialog escolhe destino
+    - Esvaziar lixeira — apaga permanentemente todos os itens
+
+  Git — indicadores visuais
+    - _disparar_git_status() → _WorkerGit em QThread a cada 5s
+    - _ao_receber_status(dict) → _status_git atualizado → viewport().update()
+    - _WorkerGit emite dict com arquivos E pastas pai (status propagado)
+    - _DelegateGit pinta badge por item (arquivo ou pasta) e colore texto
+    - "Adicionar ao Git" no menu → git add <arquivo>
+
+  Git — modo staging (ativado pelo PainelAbasInferior via abrir_painel_git)
+    - entrar_modo_staging(): pré-marca todos arquivos rastreáveis com
+      checkbox True; mostra botões "Marcar tudo / Desmarcar tudo"
+    - sair_modo_staging(): limpa staging_checks; oculta botões
+    - _ao_clique_simples(): em modo staging, clique togla checkbox
+      (não abre arquivo); pastas expandem/colapsam normalmente
+    - _eh_pasta_no_status(): distingue entradas de pasta de arquivo
+      no _status_git (verifica se alguma chave começa com "pasta/")
+    - arquivos_staging_selecionados() → list[str] de caminhos marcados
+
+  Tema
+    - _aplicar_tema() lê tema_global() para fundo (suporta gradiente
+      3 pontos: ini/meio/fim), texto, hover, selecionado, rodapé
+    - paintEvent() pinta fundo sólido ou gradiente vertical
+    - atualizar_tema(dict) — hot-reload de tema externo
+
+  API pública
+    - set_projeto(caminho)              — abre projeto, atualiza tudo
+    - revelar_arquivo(caminho)          — expande pais + scrollTo + select
+    - _filtrar_arvore(texto)            — filtra nomes; limpa ao esvaziar
+    - trocar_pack_icones(nome)          — recria model/proxy/delegate
+    - atualizar_status_git()            — força refresh do git status
+    - packs_disponiveis() → list        — lista packs de ícones
+    - entrar_modo_staging(status_git?)  — ativa checkboxes de staging
+    - sair_modo_staging()               — desativa checkboxes de staging
+    - arquivos_staging_selecionados()   — retorna caminhos marcados
+
+
+─────────────────────────────────────────────────────────────────
+# FLUXO INTERNO
+─────────────────────────────────────────────────────────────────
+
+Abertura de projeto:
+  MainWindow.abrir_projeto(caminho)
+    → PainelArquivos.set_projeto(caminho)
+         → _IconProvider.setRootPath(caminho)
+         → _ProxyOrdem.sort(0, AscendingOrder)
+         → _disparar_git_status()
+              → _WorkerGit(caminho) em QThread
+                   → concluido(dict) → _ao_receber_status()
+                        → _status_git atualizado (arquivos + pastas)
+                        → viewport().update() → _DelegateGit.paint()
+
+Status Git nas pastas (_workers.py):
+  _WorkerGit.rodar()
+    → loop arquivos: resultado[caminho_lower] = status
+    → segunda passagem: para cada arquivo, sobe árvore até raiz
+         → pasta herda prioridade mais alta entre os filhos
+         → _PRIO_PARA_STATUS: {3: "deletado", 2: "modificado", 1: "novo"}
+    → resultado final inclui pastas com status herdado
+    → _DelegateGit.paint() já consome o mesmo dict — funciona para pastas automaticamente
+
+Modo staging:
+  abrir_painel_git emitido (botão "Main" no Git)
+    → base.py conecta → PainelArquivos.entrar_modo_staging()
+         → staging_checks preenchido (todos True)
+         → delegate.set_modo_staging(True)
+         → botões "Marcar tudo / Desmarcar tudo" ficam visíveis
+  Clique em arquivo rastreável
+    → _ao_clique_simples() detecta _modo_staging=True
+         → togla staging_checks[caminho_key]
+         → viewport().update()
+  Trocar para aba Núcleo ou Exec.
+    → PainelAbasInferior._trocar(indice != 0)
+         → PainelArquivos.sair_modo_staging()
+              → staging_checks.clear()
+              → delegate.set_modo_staging(False)
+              → botões ocultados
+
+Renomear inline (F2 ou menu):
+  _renomear(caminho)
+    → _tree.edit(proxy_idx)          ← Qt exibe editor inline
+         → model.fileRenamed.emit()
+              → _ao_renomear_inline(pasta, antigo, novo)
+                   → _historico.append(("rename", novo, antigo))
+                   → atualiza abas abertas (tabs.editores)
+
+Apagar (Delete ou menu):
+  _apagar(caminho)
+    → QMessageBox.question()
+    → shutil.move(caminho, .hein/lixeira/nome_unico)
+    → _historico.append(("delete", origem, trash))
+
+Desfazer (Ctrl+Z):
+  _desfazer()
+    → _historico.pop()
+    → "delete"  → shutil.move(trash, origem)
+    → "rename"  → os.rename(atual, original)
+    → "colar"   → os.remove / shutil.rmtree
+
+
+─────────────────────────────────────────────────────────────────
+# SINAIS
+─────────────────────────────────────────────────────────────────
+
+  Signal  arquivo_selecionado(str)      duplo clique → abre no editor
+  Signal  arquivo_clicado_simples(str)  clique simples → troca aba
+  Signal  arquivo_enviado_para_ia(str)  menu "Enviar para IA"
+  Signal  executar_arquivo(str)         menu "Executar" (.py)
+
+
+─────────────────────────────────────────────────────────────────
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+  _APP_/main_window/base.py
+    - Recebe: arquivo_selecionado, arquivo_clicado_simples,
+              arquivo_enviado_para_ia, executar_arquivo
+    - Chama:  set_projeto(), revelar_arquivo(), _filtrar_arvore()
+    - Conecta abrir_painel_git → entrar_modo_staging()
+
+  _PAINEL_ESQUERDO_/painel_abas_inferior.py
+    - PainelAbasInferior.conectar_painel_arquivos(painel) liga as duas peças
+    - _trocar(indice != 0) → sair_modo_staging()
+
+  _CONFIGURA_/__init__.py
+    - _PACK_ATIVO, PACKS_ICONES, _ICONE_EXT, _ICONE_PASTA,
+      _ICONE_PADRAO, VERDE, COR_GIT_*, BORDA_TOPO, etc.
+
+  _CONFIGURA_.gerenciador_tema
+    - tema_global() para todas as cores
+
+  _UTILITARIOS_.icones
+    - icone_tema() para ícones da barra e botões
+
+  _UTILITARIOS_.hein_context_menu
+    - heinContextMenu para menu de contexto
+
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+- git status roda SEMPRE em QThread (_WorkerGit) — nunca na thread principal
+- _WorkerGit emite dict com arquivos E pastas — o delegate consome tudo igual
+- Propagação de status de pasta: deletado > modificado/renomeado > novo
+- Clique simples em modo staging togla checkbox; NUNCA emite arquivo_clicado_simples
+- Clique simples fora de staging NUNCA abre arquivo duplicado — apenas emite arquivo_clicado_simples
+- staging_checks é dict compartilhado por referência entre painel e delegate
+- Botões "Marcar tudo / Desmarcar tudo" ficam NA barra_acoes (ocultos), não em barra separada
+- Rename é inline (_tree.edit) — sem QInputDialog popup
+- Apagar NUNCA deleta permanentemente — sempre vai para .hein/lixeira/
+- _cache_icones é global ao módulo _auxiliares — limpar ao trocar pack
+- Sem QShortcut Ctrl+Alt+± no FileTree — conflita com o gerenciador de atalhos
+  do editor (dobragem de código). Botões na barra substituem.
+- _WorkerGit falha silenciosamente — sem .git = sem indicadores, sem erro
+
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+- _WorkerGit é QObject (não QThread) — usar moveToThread() antes de start()
+- _ProxyOrdem._PRIORIDADE: {".venv": 0, ".hein": 1} — menor = mais acima
+- _IconProvider.data() verifica .venv e .hein antes do fallback de pasta
+- MenuRecenteProjeto._lay guarda o QHBoxLayout; botões são inseridos
+  via insertWidget(2..4) para ficarem antes do addStretch(1)
+- set_projeto() exibe tamanho total do projeto em MB no label da barra
+- _atualizar_tamanho_venv() tenta setData(DisplayRole) no índice .venv
+  para mostrar tamanho — depende de _IconProvider não sobrescrever DisplayRole
+- Drag-and-drop InternalMove: setReadOnly(False) é obrigatório no model
+- Modo staging usa PE_IndicatorCheckBox do QStyle nativo — visual segue
+  o tema do sistema operacional (Windows/Linux/Mac)
+- _eh_pasta_no_status() não usa os.path.isdir() para evitar acesso a disco
+  em tempo de pintura — verifica prefixo no próprio dict _status_git

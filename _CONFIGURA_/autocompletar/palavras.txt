@@ -1,0 +1,27 @@
+# Wordlist de exemplo — adicione as palavras do seu projeto aqui.
+# Linhas começando com # são comentários e são ignoradas.
+# Uma palavra por linha. Podem ser nomes de funções, variáveis, termos do domínio etc.
+
+# Exemplos de termos gerais de programação em português
+inicializar
+configurar
+carregar
+processar
+validar
+calcular
+verificar
+conectar
+desconectar
+serializar
+deserializar
+formatar
+converter
+exportar
+importar
+
+# Palavras para TODO: comentários
+TODO:
+LEMBRAR:
+CONSERTAR:
+FAZER:
+GAMBIARRA:

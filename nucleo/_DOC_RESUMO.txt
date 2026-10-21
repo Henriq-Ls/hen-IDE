@@ -1,0 +1,60 @@
+# hein-basic/nucleo/_DOC_RESUMO.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — RESUMO DE ESTADO
+  Última atualização: 2026-10-19 (aba de build de executáveis)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ÚLTIMA SESSÃO — 2026-10-19 (aba de build de executáveis)
+──────────────────────────────────────────────────────────────────────
+• Aba Executável foi ligada ao painel inferior e ao Explorer do terminal central.
+• O build local usa a .venv do projeto; o release gera workflow e build autônomo
+  dentro do projeto e publica pela sessão Git da IDE.
+• A autenticação remota continua no credential helper temporário; tags existentes
+  são recusadas, sem sobrescrita forçada.
+
+ESTADO POR MÓDULO
+─────────────────
+_APP_/Boas_Vindas/   ✅ picker boot/dialog, criação, clone, workers e GitHub documentados
+                     ⏳ validação final do comportamento no Windows
+                     ⚠️ relato de 0x8001010d ainda em investigação
+_APP_/main_window/   ✅ criação de venv usa configuração central de subprocesso
+_EDITOR_/            ✅ autocomplete e diff usam configuração central de subprocesso
+_PAINEL_ESQUERDO_/Git/ ✅ Device Flow, contas, repositórios e Git autenticado documentados
+                        ⏳ validação funcional com conta GitHub real no Windows
+_EXECUTAVEL_/         ✅ configuração, análise, PyInstaller local e workflow release
+                         ⏳ teste ponta a ponta em Windows/GitHub
+_PAINEL_ESQUERDO_/FileTree/ ✅ Git interno usa configuração central de subprocesso
+_TERMINAIS_/         ✅ debug e consultas internas usam configuração central de subprocesso
+_UTILITARIOS_/       ✅ função universal sem console e consumidores migrados
+main.py              ✅ roteamento por argumento --projeto documentado
+
+PENDÊNCIAS GLOBAIS
+──────────────────
+• Investigar a ocorrência de 0x8001010d no boot após o carregamento do tema.
+• Validar em Windows o encerramento do processo do picker e a ausência de janelas
+  ou ícones residuais.
+• Validar no Windows a IDE iniciada sem console aberto, incluindo autocomplete,
+  criação de projeto, Git e debug.
+• Validar em Windows o clone e as operações Git autenticadas com repositórios
+  públicos e privados.
+
+--- Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-07): integração GitHub na tela inicial ---
+• Documentada a área GitHub da coluna central da tela de boas-vindas.
+• Reutilizado o Device Flow existente e a fonte única config_github().
+• Documentado o clone compartilhado e seguro, sem token persistido na URL do remoto.
+
+--- Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-07): arquitetura multi-processo ---
+• Documentado o roteamento de main.py entre JanelaPicker e MainWindow.
+• Documentado o lançador único de processos.
+• Documentado o ciclo de vida e as regras de threading de Boas_Vindas.
+
+--- Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-11): centralização de subprocessos sem console ---
+• Criada a função universal opcoes_processo_sem_console() em _UTILITARIOS_.
+• Consumidores internos passaram a reutilizar STARTUPINFO/SW_HIDE e CREATE_NO_WINDOW.
+• A validação real no Windows continua pendente; o erro 0x8001010d permanece em investigação.
+
+REGRAS DE ATUALIZAÇÃO
+─────────────────────
+• Atualizar somente os módulos tocados na sessão.
+• Não repetir arquitetura detalhada, que pertence ao _DOC_PROJETO.
+• Manter apenas as três sessões mais recentes no rodapé.

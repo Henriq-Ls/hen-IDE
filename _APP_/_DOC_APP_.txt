@@ -1,0 +1,429 @@
+# 📁 _APP_/_DOC_APP_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _APP_ — DOCUMENTAÇÃO DO MÓDULO
+  Última atualização: 2026-07-18 (Sessão 35: botão Git na barra_lateral_direita)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Núcleo da interface gráfica da hein IDE.
+Contém a janela principal (MainWindow) e todos os widgets de primeiro nível:
+abas de código, abas de terminal, barra de título customizada, barra de busca
+unificada e navegação Ctrl+Tab por ordem de uso (MRU).
+É o ponto de montagem de todos os outros módulos da IDE.
+
+
+RESPONSABILIDADES
+─────────────────
+• Instanciar e conectar todos os painéis (esquerdo, central, direito, terminais)
+• Gerenciar o layout de três colunas com QSplitter (persistido em layout.json)
+• Abrir/fechar projetos e arquivos; gerenciar abas de código
+• Delegar execução de código ao TerminalTabWidget (Run_Out)
+• Oferecer menu completo da IDE (Arquivo, Editar, Executar, Visualizar, Projeto, Ajuda)
+• Coordenar a busca global: BarraCentral → MotorBusca → PainelResultados
+• Sincronizar FileTree ↔ abas abertas (clique simples troca aba; duplo abre)
+• Revelar automaticamente no FileTree o arquivo da aba ativa
+• Gerenciar temas e configurações com hot-reload
+• Gerenciar auto-save e persistência de sessão via GerenciadorAbas_AutoSalve
+• Restaurar abas da sessão anterior na inicialização (lazy rehighlight 80ms/aba)
+• Exibir chip de versão e notificar atualizações disponíveis
+• Injetar saída do terminal ativo no contexto da IA
+• Garantir instância única da IDE via QLockFile (main.py)
+
+
+ARQUIVOS
+────────
+  main.py                      → ponto de entrada — inicializa QApplication, aplica
+                                 QLockFile (instância única) e instancia MainWindow
+  __init__.py                  → vazio (marca o pacote Python)
+  main_window/                 → pacote (ex-main_window.py, 4607 linhas) — MainWindow,
+                                 janela principal, orquestra tudo. Dividido em:
+                                   __init__.py           → combina base + mixins em MainWindow
+                                                            via herança múltipla; re-exporta MainWindow
+                                   base.py                → MainWindowBase — __init__, _montar_ui,
+                                                            restaurar_padroes, _sobre, eventos de janela;
+                                                            também define ARQUIVO_AUTOCOMPLETE
+                                   mixin_projeto.py        → abrir/criar projeto, recentes;
+                                                            IMPORTANTE: _abrir_projeto_interno() chama
+                                                            quit()+wait() no _indexador e _analisador_projeto
+                                                            antes de substituir a referência — evita
+                                                            "QThread: Destroyed while thread is still running";
+                                                            painel_git/motor_busca diferidos com singleShot(0),
+                                                            painel_ia com singleShot(10) (closure _set_ia
+                                                            preserva try/except original); cache_clear() antes
+                                                            de trocar projeto; processEvents() removido
+                                   mixin_abas.py            → abas de código, dedup, JSON explorers;
+                                                            _ao_split_solicitado() cria JanelaEditorFlutuante
+                                                            e guarda em self._janelas_flutuantes (evita GC)
+                                   mixin_busca.py           → busca global (BarraCentral/MotorBusca)
+                                   mixin_terminal_debug.py  → terminal, execução, depurador
+                                   mixin_atalhos.py         → atalhos de teclado (Ctrl+1..7 etc.)
+                                   mixin_layout.py          → splitters, temas, layout.json;
+                                                            abrir_executavel_config() usa
+                                                            QTimer.singleShot(0) aninhado
+                                                            para abrir ExecutavelExplorer
+                                                            após add_new_tab() (fix Ctrl+9)
+                                   painel_card.py           → PainelCard (inalterado)
+                                   workers.py                → _CriadorVenv, _AnalisadorProjeto,
+                                                            _recarregar_se_necessario,
+                                                            _garantir_hein_no_gitignore (inalterados)
+                                 Import externo inalterado: `from _APP_.main_window import MainWindow`
+  dialogo_novo_projeto.py      → PainelNovoProjeto — aba especial de criação de projeto;
+                                 contém também _BuscadorPython(QThread) e
+                                 _CriadorVenv(QThread)
+  outdoor.py                   → Outdoor — container de painéis especiais (QStackedWidget);
+                                 hospeda PainelBoasVindas e PainelNovoProjeto
+  painel_boas_vindas.py        → PainelBoasVindas — tela inicial com projetos recentes
+                                 e atalhos de ação (Novo, Abrir Projeto, Abrir Arquivo)
+  tab_widget.py                → TabWidget — gerencia abas de CodeEditor:
+                                 • add_new_tab() — addTab + setCurrentIndex em blockSignals;
+                                   currentChanged emitido uma vez manualmente; elimina
+                                   27 execuções cascata de slots por aba aberta
+                                 • open_preview(caminho) — abre aba em modo preview (itálico);
+                                   re-emite currentChanged após setar _preview_editor para
+                                   que BarraTitulo reconstrua com estado correto
+                                 • mover_aba(de, para_antes_de) — reordena abas via
+                                   tabBar().moveTab(); ajusta índice conforme direção do
+                                   movimento; chama _reindexar() para sincronizar editores
+                                 • destacar_aba(indice) — remove editor do TabWidget e
+                                   retorna-o para JanelaEditorFlutuante
+                                 • reinserir_editor(editor) — devolve editor destacado
+                                   como nova aba permanente
+  terminal_tab_widget.py       → TerminalTabWidget — gerencia abas de terminal;
+                                 Signal debug_solicitado = Signal();
+                                 abrir_aba_debug(arquivo) — cria/reutiliza
+                                 aba 'Depurador' com PainelDebug;
+                                 fechar_aba() encerra PainelDebug antes de
+                                 removeTab() (sem vazamento de QThread);
+                                 painel_debug_ativo() — retorna PainelDebug
+                                 da aba ativa ou None
+  barra_aba_topo.py              → BarraTitulo + AbaWidget — barra de título frameless
+                                 com abas de arquivo, menu hein e botões de controle:
+                                 • AbaWidget._tamanho_fonte() lê "tamanho_fonte_aba" de
+                                   configurar.json (fallback = altura_aba * 0.37)
+                                 • AbaWidget suporta drag de reorder (horizontal) e
+                                   drag de tear-off (ZonaDropSplit, para fora da barra):
+                                   — _reordenando: bool — flag de estado do drag
+                                   — _get_barra_topo() — sobe parent chain até BarraTitulo
+                                   — mouseMoveEvent: dentro da barra → reorder com
+                                     grabMouse(); fora/abaixo → _iniciar_tear_off()
+                                   — mouseReleaseEvent: finaliza reorder via
+                                     BarraTitulo._finalizar_reorder()
+                                 • _IndicadorReorder — overlay QWidget de 3px pintado
+                                   na cor interface.destaque; flutua em _container_abas
+                                   mostrando o ponto de inserção durante o drag
+                                 • BarraTitulo._calcular_drop() — itera AbaWidget e
+                                   calcula índice de inserção + geometria do indicador
+                                 • BarraTitulo._finalizar_reorder() — chama
+                                   tab_widget.mover_aba() e reconstrói a barra
+  barra_buscas.py              → BarraEsquerda, BarraCentral, BarraDireita,
+                                 PainelResultados — sistema de busca visual;
+                                 BarraCentral usa layout de linha única com
+                                 setRightReserva(); _ALTURA_BASE dinâmica;
+                                 _CampoBarraBusca._ajustar_altura() conta linhas
+                                 pelo texto (\n) em vez de documentSize() —
+                                 evita trava em MAX_LINHAS quando o widget
+                                 nasce oculto com width=0 (fix Ctrl+F GIGANTE);
+                                 resizeEvent() reagenda ajuste quando a largura muda
+  janela_flutuante.py          → JanelaEditorFlutuante — janela OS independente;
+                                 chama editor.show() explicitamente após
+                                 root.addWidget(editor) porque setParent(None) em
+                                 destacar_aba() marca o widget como oculto e o Qt
+                                 não o mostra automaticamente ao ser reinserido
+  navegador_abas.py            → NavegadorAbas — Ctrl+Tab MRU com popup flutuante
+  utilitarios_perfil.py        → gerar_saudacao(), obter_periodo_do_dia(), saudacao_longa()
+                                 Lê nome do usuário via _CONFIGURA_.gerenciador_perfil;
+                                 retorna saudação conforme hora do dia (bom dia / boa tarde / boa noite)
+  painel_menu_hein.py          → PainelMenuHein(QWidget) — aba de menu da IDE no TerminalTabWidget
+                                 Substitui o QMenu popup do botão 'hein'; lista todas as opções
+                                 de forma plana e clicável; tematizado via tema_global();
+                                 agrupa ações por seção (ocultando "Executar" e "Editar")
+  zona_drop_split.py           → ZonaDropSplit — overlay semi-transparente exibido
+                                 durante drag de aba para fora da barra; oferece
+                                 "Dividir à direita" (right) e "Janela flutuante" (float);
+                                 grabMouse() até o usuário soltar ou pressionar Esc
+
+
+FLUXO INTERNO
+─────────────
+main.py
+  └─ QLockFile("hein_ide.lock") — aborta silenciosamente se já houver instância
+  └─ MainWindow.__init__()
+       ├─ _montar_ui()
+       │    ├─ BarraTitulo           (topo, frameless, drag, abas visuais)
+       │    ├─ QSplitter horizontal  (3 colunas)
+       │    │    ├─ Coluna 1: PainelArquivos + PainelGit  (QSplitter vertical)
+       │    │    ├─ Coluna 2: BarraCentral + TabWidget + TerminalTabWidget
+       │    │    │             + MotorBusca + PainelResultados
+       │    │    └─ Coluna 3: PainelIA
+       │    └─ StatusBar
+       ├─ GerenciadorAbas_AutoSalve  (auto-save 3s + persistência de sessão)
+       ├─ GerenciadorAtalhos         (atalhos globais)
+       ├─ NavegadorAbas              (Ctrl+Tab MRU, installEventFilter)
+       ├─ config_global()._aplicar_em_tudo()
+       ├─ tema_global().iniciar_hot_reload()
+       ├─ verificar_atualizacao()    (chip de versão na BarraTitulo, QThread+5s delay)
+       └─ _restaurar_ou_outdoor()   (QTimer singleShot 0ms)
+              → restaurar_sessao(): abre abas da sessão anterior (lazy 80ms/aba)
+              → se sem sessão: abrir_outdoor() → boas-vindas
+
+Abertura de projeto:
+  abrir_projeto(caminho)
+    → painel_arquivos.set_projeto()
+    → painel_git.set_projeto()
+    → motor_busca.set_projeto()
+    → painel_ia.set_projeto()
+    → Indexador(caminho).iniciar()
+    → terminais.set_project_path()
+    → tabs.clear() + add_new_tab(main.py ou primeiro .py)
+
+Criação de novo projeto:
+    Abertura do Outdoor:
+    MainWindow.abrir_outdoor()  ← chamado via QTimer na inicialização e via menu
+        → se aba Outdoor já existe: mostra boas-vindas + ativa a aba
+        → senão: instancia Outdoor, conecta sinais, abre aba com ícone mdi6.folder-star
+    Outdoor._boas_vindas (PainelBoasVindas):
+        → lista projetos recentes de recentes.json (apenas os que ainda existem no disco)
+        → botões Novo Projeto / Abrir Projeto / Abrir Arquivo → emitem sinais → MainWindow
+    Criação de novo projeto:
+    MainWindow.novo_projeto()
+        → se aba Outdoor já existe: Outdoor.mostrar_novo_projeto() + ativa aba
+        → senão: cria Outdoor via _criar_outdoor(), depois mostrar_novo_projeto()
+        → nunca abre segunda aba Outdoor
+
+
+  PainelNovoProjeto (dialogo_novo_projeto.py):
+    → _BuscadorPython(QThread) varre PATH + Python Launcher + locais comuns
+         → emite encontrado(exe, versao) → popula lista de interpretadores
+         → emite concluido() → atualiza label de status
+    → botão "Navegar..." (destino): _ao_navegar_destino() abre QFileDialog na
+         última pasta salva em QSettings("hein","hein_IDE")["ultima_pasta_destino"]
+         (fallback PASTA_PROJETOS); ao escolher, salva a nova pasta em QSettings
+    → usuário preenche nome, destino, seleciona Python (lista ou caminho manual)
+    → botão "Criar Projeto" → _ao_criar():
+         → valida campos
+         → os.makedirs + cria .gitignore e main.py
+         → exibe área de progresso interna (QLabel + QProgressBar)
+         → inicia _CriadorVenv(caminho, python_exe)
+              → usa python_exe explícito — nunca sys.executable (bug no .exe PyInstaller)
+              → STARTUPINFO + CREATE_NO_WINDOW no Windows
+              → sinal concluido(caminho) → _ao_venv_criado() → emite projeto_pronto
+              → sinal erro(msg) → _ao_venv_erro() → emite projeto_pronto mesmo assim
+                (falha silenciosa — projeto abre sem .venv)
+
+  MainWindow._ao_projeto_criado(caminho, main_py):
+    → fecha a aba do PainelNovoProjeto
+    → set_projeto em todos os painéis
+    → inicia Indexador
+    → tabs.clear() + add_new_tab(main_py)
+    → registra projeto nos recentes
+    → atualiza status bar
+
+Busca global:
+  BarraCentral.buscar_global(termo)
+    → MainWindow._ao_buscar_global(termo)
+         • prefixo "@" → GrepThread no projeto
+         • prefixo "#marcação" → limpar() → abrir_aba_busca_global() → AnotacoesThread
+         • prefixo "#" (outro) → PainelOutline._alternar_modo("TAREFAS")
+         • prefixo ">" → command palette
+         • texto livre → busca no arquivo + GrepThread paralelo
+         → MotorBusca.buscar(...)
+         → PainelResultados.mostrar() / .adicionar()
+    → item_clicado → _ao_selecionar_resultado_busca()
+         → abre arquivo + vai para linha (com QTimer 450ms se arquivo novo)
+
+Drag de aba — reorder:
+  AbaWidget.mouseMoveEvent (threshold atingido, dentro da BarraTitulo)
+    → _reordenando = True + grabMouse()
+    → a cada movimento: BarraTitulo._atualizar_indicador_reorder()
+         → _calcular_drop() → _IndicadorReorder.mover_para()
+  AbaWidget.mouseReleaseEvent
+    → releaseMouse() + BarraTitulo._finalizar_reorder()
+         → TabWidget.mover_aba(de, para_antes_de)
+              → tabBar().moveTab(de, destino) + _reindexar()
+         → _reconstruir_abas()
+
+Drag de aba — tear-off / split:
+  AbaWidget.mouseMoveEvent (threshold atingido, fora da BarraTitulo ou abaixo)
+    → _iniciar_tear_off() → TabWidget._pedir_split()
+         → ZonaDropSplit.show_over() + grabMouse()
+         → zona 'float': split_solicitado(editor, 'float')
+              → _ao_split_solicitado() → destacar_aba() → JanelaEditorFlutuante
+         → zona 'right': split_solicitado(editor, 'right') → _criar_painel_split()
+
+
+SINAIS / API PÚBLICA
+────────────────────
+
+  PainelNovoProjeto
+    [Signal] projeto_pronto(caminho: str, main_py: str)
+             Emitido ao concluir criação de projeto.
+             Conectado a: main_window._ao_projeto_criado()
+
+  TerminalTabWidget
+    [Signal] debug_solicitado = Signal()
+             Emitido pelo botão 🐛.
+             Conectado a: main_window._iniciar_debug()
+    [Signal] explorar_json_solicitado = Signal(str)
+             Propagado de RunOutputWidget quando JSON é detectado.
+             Conectado a: main_window._ao_explorar_json()
+
+  RunOutputWidget (via TerminalTabWidget)
+    [Signal] abrir_no_editor = Signal(str)
+             Emitido ao clicar em "Abrir no Editor" no JsonExplorer.
+             Conectado a: main_window._ao_abrir_no_editor()
+
+  TabWidget
+    [Signal] split_solicitado(editor, zona: str)  # 'right' | 'float'
+             Emitido por _pedir_split() durante drag de aba para fora da barra.
+             Conectado a: main_window._ao_split_solicitado()
+
+  JanelaEditorFlutuante
+    [Signal] devolver_editor(editor)
+             Emitido ao fechar a janela flutuante (X ou botão "← Principal").
+             Conectado a: _ao_devolver() em mixin_abas → tabs.reinserir_editor()
+
+  API PÚBLICA (chamada de outros módulos):
+    MainWindow.abrir_projeto(caminho: str)
+    MainWindow.novo_projeto()
+    MainWindow.set_current_file(caminho: str)
+    TabWidget.mover_aba(de: int, para_antes_de: int)
+    TabWidget.open_preview(caminho: str) → CodeEditor
+    TabWidget.destacar_aba(indice: int) → CodeEditor | None
+    TabWidget.reinserir_editor(editor) → int
+    TerminalTabWidget.abrir_aba_pip(titulo: str) → AbaLogPip
+    TerminalTabWidget.painel_debug_ativo() → PainelDebug | None
+
+
+INTEGRAÇÕES
+───────────
+• _APP_/dialogo_novo_projeto.py → PainelNovoProjeto, _BuscadorPython, _CriadorVenv
+• _TERMINAIS_/painel_debug.py   → PainelDebug instanciado por abrir_aba_debug();
+                                   import lazy (dentro do método) para evitar circular;
+                                   iniciar_sessao(arquivo, python_path, breakpoints=[]);
+                                   sincronizar_breakpoints(linhas) chamado pela MainWindow
+• _TERMINAIS_/cliente_dap.py    → ClienteDAP criado por PainelDebug.iniciar_sessao();
+                                   set_breakpoints(linhas) chamável da thread principal
+• _EDITOR_/numeros_linha.py     → NumeroLinhas.breakpoint_clicado conectado a
+                                   _ao_breakpoint_clicado() via _ao_trocar_aba_breakpoint()
+• _BUSCA_/motor_busca.py        → MotorBusca instanciado em main_window.py
+• _APP_/barra_buscas.py         → BarraCentral + PainelResultados conectados à MainWindow
+• _EDITOR_/Editor.py            → CodeEditor criado pelo TabWidget
+• _EDITOR_/Indexador.py         → iniciado ao abrir projeto
+• _TERMINAIS_/                  → Power_Shwell + Run_Out criados pelo TerminalTabWidget
+• _PAINEL_DIREITO_/Ias/         → PainelIA criado na coluna 3
+• _PAINEL_ESQUERDO_/            → PainelArquivos + PainelAbasInferior (Git)
+• _APP_/barra_lateral_direita.py →
+    _btn_git: QPushButton (ícone mdi.source-branch, 30 px), oculto por padrão.
+    conectar_painel_git(git_ui_projeto): torna o botão visível; guarda
+      referência ao git_ui_projeto para montar o QMenu de ações.
+    _abrir_menu_git(): QMenu montado dinamicamente com hasattr() — só
+      exibe ações que o painel suporta. Duas seções: Git local e GitHub.
+      Posicionado à esquerda do botão (mapToGlobal + largura do menu).
+    atualizar_tema(): re-estiliza _btn_git junto com todos os outros botões.
+    Sem emojis nos textos de ação. Ícones via icone_tema().
+    Chamada esperada em main_window: barra_direita.conectar_painel_git(git_ui)
+• _CONFIGURA_/                  → TITULO_APP, geometria, cores, atalhos, fontes;
+                                   todas as constantes usadas no PainelNovoProjeto
+                                   vêm de _CONFIGURA_/__init__.py e tema_global()
+• _CONFIGURA_/gerenciador_tema  → hot-reload de tema aplicado à janela;
+                                   cores do PainelNovoProjeto lidas via tema_global()
+• _CONFIGURA_/gerenciador_configurar → config_global() + hot-reload
+• _LOG_/painel_logs.py          → aba "Log" aberta automaticamente no TerminalTabWidget
+• _LOG_/log.py                  → falha de venv logada via log.warning()
+• _UTILITARIOS_/icones.py       → icone_tema() para todos os ícones
+• _UTILITARIOS_/atualizador.py  → verificar_atualizacao() no __init__
+• _UTILITARIOS_/hein_context_menu.py → menu hein e menus do FileTree
+• GerenciadorAbas_AutoSalve (classe em main_window.py) → auto-save das abas abertas + persistência de sessão
+• PASTA_APPDATA/layout.json     → persistência de tema Qt e larguras dos splitters
+• PASTA_APPDATA/recentes.json   → lista de projetos recentes (máx. 10)
+• PASTA_APPDATA/sessao.json     → lista de abas da última sessão + aba ativa + projeto
+• <RAIZ_IDE>/temas/             → pasta de temas JSON dinâmicos;
+                                  varrida pelo GerenciadorTema.listar_temas_json()
+                                  criada automaticamente se não existir
+
+
+REGRAS
+──────
+• Janela usa Qt.FramelessWindowHint — toda a barra de título é customizada (BarraTitulo)
+• Splitters salvam largura em layout.json ao serem movidos (QTimer 500ms debounce)
+• Larguras são restauradas 80ms após o __init__ (QTimer.singleShot(80))
+• Clique simples no FileTree só troca para aba já aberta — NUNCA abre arquivo novo
+• Duplo clique no FileTree abre o arquivo (sinal arquivo_selecionado)
+• add_new_tab() normaliza caminhos com normcase + abspath antes de comparar
+  — evita duplicata por barras mistas (/ vs \) ou capitalização diferente no Windows
+• closeEvent() sempre chama salvar_sessao() antes de fechar a MainWindow
+• restaurar_sessao() abre arquivos com delay escalonado (80ms/aba) — sem freeze;
+  arquivo ativo (delay=0) abre imediatamente; os demais abrem em background
+• sessao.json inclui 'projeto' (current_project_path); na restauração
+  _configurar_projeto() é chamado ANTES das abas abrirem — tabs.project_path
+  garante que add_new_tab() auto-aplica set_projeto() em cada editor
+• _configurar_projeto() NUNCA chama tabs.clear() nem add_new_tab() —
+  apenas configura painéis; abas são responsabilidade do lazy loader
+• Temas JSON ficam em <RAIZ_IDE>/temas/*.json — cada arquivo = um tema;
+  seleção persiste em layout.json como 'tema_json'; pré-carregado no startup
+  antes de aplicar_na_janela() → janela já abre com o tema certo
+• Quando a aba ativa muda, o FileTree revela e seleciona o arquivo correspondente
+• Todo processamento pesado em QThread — NUNCA na thread principal
+• Nunca hardcodar strings de fonte ou cor nos módulos — ficam em _CONFIGURA_/__init__.py
+• Todos os logs via _LOG_/log.py — NUNCA print()
+• Arquivo aberto que já existe como aba: apenas ativa, não duplica
+• Criação de .venv SEMPRE em _CriadorVenv(QThread) — nunca subprocess.run() direto
+• _CriadorVenv SEMPRE recebe python_exe explícito — nunca usa sys.executable
+  (dentro do .exe PyInstaller, sys.executable aponta para o bundle, não para Python real)
+• Toda lógica de criação de projeto (pastas, arquivos, venv, progresso) fica em
+  dialogo_novo_projeto.py — a MainWindow apenas orquestra painéis após o projeto pronto
+• Outdoor não pode ser aberto em duplicata — MainWindow usa _obter_outdoor()
+• Aba 'Depurador' não pode ser aberta em duplicata — abrir_aba_debug() reutiliza
+• fechar_aba() DEVE chamar _parar_sessao_atual() antes de removeTab() para
+  PainelDebug — sem isso a QThread ClienteDAP fica viva indefinidamente
+• ClienteDAP NUNCA deve ser destruído enquanto sua thread ainda roda:
+  usar QThread.finished + deleteLater(), nunca assignment direto para None
+• _ao_breakpoint_clicado() DEVE verificar se o arquivo do editor ativo
+  corresponde ao arquivo da sessão de depuração antes de sincronizar BPs
+  — descarta silenciosamente se arquivo diferente (guard de arquivo)
+• _ao_trocar_aba_breakpoint() DEVE reconectar o sinal breakpoint_clicado
+  ao NumeroLinhas da nova aba ativa para manter a sincronização correta
+• Outdoor tem painéis internos via QStackedWidget: mostrar_boas_vindas() e
+  mostrar_novo_projeto() alternam entre eles sem fechar a aba
+• Ao trocar de projeto, _abrir_projeto_interno() DEVE chamar quit()+wait() no
+  _indexador e _analisador_projeto antes de substituir a referência — sem isso
+  o GC destrói o QThread enquanto ainda está rodando (exit code 1)
+• _CampoBarraBusca._ajustar_altura() NUNCA deve usar documentSize() para medir
+  linhas — o layout do documento é calculado com width=0 enquanto a barra nasce
+  oculta e trava em MAX_LINHAS; usar texto.count('\n') + 1
+
+
+OBSERVAÇÕES
+───────────
+• BarraTitulo esconde o tabBar() nativo do TabWidget e usa AbaWidget customizado
+  para ter abas com cantos arredondados + ícones por extensão de arquivo
+• NavegadorAbas usa installEventFilter na QApplication para capturar Ctrl+Tab global
+• TerminalTabWidget tem aba "Log" permanente (sem botão de fechar) + abas de terminal
+  e abas especiais (Pacotes, JSON Explorer)
+• A barra de buscas tem dois modos independentes: modo global (prefixos @*:#>)
+  e modo arquivo (Ctrl+F) — apenas o modo global aciona o MotorBusca
+• Chip de versão na BarraTitulo fica desabilitado (cinza) até o atualizador
+  confirmar que há uma versão nova — então vira clicável com link
+• JsonExplorer é aberto como aba no TerminalTabWidget a partir da saída do Run_Out
+• PainelResultados é filho do centralWidget() e posicionado sobre o TabWidget
+  (flutua sobre o conteúdo, não empurra o layout)
+• QLockFile usa tempfile.gettempdir() + "hein_ide.lock"; setStaleLockTime(0) garante
+  que crash anterior não impeça o próximo start
+• _CriadorVenv usa STARTUPINFO + CREATE_NO_WINDOW apenas em sys.platform == "win32"
+  — sem efeito em Linux/macOS
+• _BuscadorPython varre: PATH do sistema → Python Launcher (py --list-paths) →
+  locais comuns Windows (%LOCALAPPDATA%\Programs\Python, C:\Python, etc.) →
+  locais comuns Linux/macOS (/usr/bin, /usr/local/bin, ~/.local/bin, etc.)
+• Se criação da .venv falhar, _ao_venv_erro() loga o erro, exibe aviso no painel
+  e emite projeto_pronto mesmo assim — falha silenciosa conforme regra global
+• PainelNovoProjeto foi projetado para receber expansões futuras: estruturas de
+  projeto configuráveis, criação de banco de dados, scripts pré-montados
+• AbaWidget.grabMouse() durante reorder — todos os eventos de mouse vão para a aba
+  arrastada até releaseMouse(); permite rastrear posição mesmo fora da aba original
+• _IndicadorReorder é filho de _container_abas mas NÃO está em nenhum layout —
+  sobrevive ao _reconstruir_abas() que limpa apenas os layouts de linha
+• tabBar().moveTab(from, to): se from < to, o destino efetivo é para_antes_de-1
+  (a remoção desloca os índices); se from > to, o destino é para_antes_de diretamente

@@ -1,0 +1,20 @@
+{
+    "nome": "Usuário",
+    "email": "",
+    "idioma": "pt-BR",
+    "avatar": "",
+    "github": "",
+    "saudacao_personalizada": "Bem-vindo de volta, {nome}!",
+    "pasta_projetos": "",
+    "data_criacao": "",
+    "ativacao": {
+        "chave": "",
+        "data_ativacao": "",
+        "status": "gratuito"
+    },
+    "git": {
+        "nome": "",
+        "email": ""
+    },
+    "extras": {}
+}

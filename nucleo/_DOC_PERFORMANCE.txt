@@ -1,0 +1,192 @@
+# hein-basic/nucleo/_DOC_PERFORMANCE.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — LOG DE PERFORMANCE
+  Última atualização: 2026-08-11 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: centralização de subprocessos sem console)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ESTADO RÁPIDO — Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-07)
+──────────────────────────────────────────────────────────────────────
+picker boot              ✅ OK     inicialização leve e encerramento explícito
+isolamento de projetos   ✅ OK     novo projeto inicia em novo processo
+workers do picker        ⚠️ RISCO  precisam ser desconectados/destruídos com segurança
+erro Windows 0x8001010d  ⚠️ RISCO  ainda relatado no boot e não explicado
+subprocessos internos   ✅ CÓDIGO  ocultação centralizada; validação no Windows pendente
+
+ESTADO ATUAL DOS SUBSISTEMAS
+─────────────────────────────
+SUBSISTEMA                  STATUS    DETALHE
+──────────────────────────  ────────  ──────────────────────────────────────
+JanelaPicker                ✅ OK     sem threads pesadas no __init__
+Lançamento de projeto       ✅ OK     Popen centralizado no lançador
+Ciclo de vida Qt            ✅ OK     hide, WA_DeleteOnClose e closeEvent
+Threads de criação/clone   ⚠️ RISCO  fechamento depende do ciclo de vida Qt
+COM/Windows boot            ⚠️ RISCO  0x8001010d ainda observado
+Subprocessos auxiliares     ✅ CÓDIGO  STARTUPINFO/SW_HIDE + CREATE_NO_WINDOW centralizados
+
+PRÓXIMAS ÁREAS A INVESTIGAR
+───────────────────────────
+ALTA PRIORIDADE:
+  • Identificar a origem exata do 0x8001010d depois do carregamento do tema e
+    antes da exibição completa do picker.
+MÉDIA PRIORIDADE:
+  • Executar teste no Windows abrindo recente, novo projeto e clone, verificando
+    a barra de tarefas e o encerramento do processo picker.
+  • Executar a IDE sem console aberto e testar autocomplete, venv, Git e debug.
+INVESTIGAR:
+  • Confirmar se todos os workers já criados encerram ou recebem deleteLater()
+    antes de o QApplication terminar.
+
+DECISÕES PENDENTES / EM DEBATE
+───────────────────────────────
+• [INFORMAÇÃO NÃO CONFIRMADA] Não foi decidido nesta sessão se o tratamento do
+  0x8001010d deve permanecer no VEH ou ser substituído por outra abordagem.
+
+REGRAS ESPECÍFICAS DE PERFORMANCE
+──────────────────────────────────
+P-01  O picker não deve carregar painéis pesados antes da escolha do usuário.
+P-02  A troca de projeto não deve reaproveitar o processo atual.
+P-03  Antes de encerrar o picker, ocultar a janela e desconectar sinais dos workers.
+P-04  QThread ainda em execução não pode ser destruído por atribuição direta ou
+      coleta de lixo; usar finished() e deleteLater().
+
+FILOSOFIA TÉCNICA
+─────────────────
+• Isolar recursos Qt por processo é preferível a desmontar e reconstruir todos
+  os painéis pesados durante a troca de projeto.
+• A UI inicial deve permanecer leve e carregar recursos sob demanda.
+• O encerramento deve ser explícito e ordenado: esconder, fechar, processar eventos
+  e só então sair do event loop do processo inicial.
+
+ÍNDICE DE SESSÕES
+─────────────────
+Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-07): ciclo de vida do picker e isolamento
+Sessão [INFORMAÇÃO NÃO CONFIRMADA] (2026-08-11): centralização de subprocessos sem console
+
+================================================================================
+SESSÃO [INFORMAÇÃO NÃO CONFIRMADA] — CICLO DE VIDA DO PICKER (2026-08-07)
+================================================================================
+
+SINTOMA REPORTADO PELO USUÁRIO
+────────────────────────────────
+"Janelas fantasma ou ícones presos na barra de tarefas permanecem abertos no
+fundo ao selecionar um projeto; também aparece às vezes 0x8001010d."
+
+1. janela_picker.py — CICLO DE VIDA DA JANELA
+────────────────────────────────────────────────
+PROBLEMA: o picker precisava desaparecer antes da abertura do processo seguinte
+e ser destruído pelo Qt ao fechar.
+SOLUÇÃO:
+  ANTES:
+      self._montar_ui()
+      self._restaurar_config()
+  DEPOIS:
+      self.setAttribute(Qt.WA_DeleteOnClose, True)
+      self._montar_ui()
+      self._restaurar_config()
+
+  ANTES:
+      self._salvar_config()
+      abrir_projeto_novo_processo(caminho)
+  DEPOIS:
+      self._salvar_config()
+      self.hide()
+      QApplication.processEvents()
+      abrir_projeto_novo_processo(caminho)
+
+2. lancador_projeto.py — PROCESSO INDEPENDENTE
+───────────────────────────────────────────────
+PROBLEMA: a abertura de projeto precisava ser centralizada e evitar compartilhamento
+desnecessário de handles.
+SOLUÇÃO:
+  ANTES:
+      subprocess.Popen(
+          [sys.executable, main_py, f"--projeto={caminho}"],
+          cwd=raiz,
+          creationflags=flags,
+      )
+  DEPOIS:
+      processo = subprocess.Popen(
+          [sys.executable, main_py, f"--projeto={caminho}"],
+          cwd=raiz,
+          creationflags=flags,
+          close_fds=True,
+      )
+
+3. main.py — ROTEAMENTO
+────────────────────────
+PROBLEMA: a arquitetura precisava distinguir explicitamente o processo picker do
+processo editor.
+SOLUÇÃO:
+  ANTES:
+      [INFORMAÇÃO NÃO CONFIRMADA] O trecho anterior completo não está disponível
+      nesta sessão de documentação.
+  DEPOIS:
+      if _projeto_arg:
+          janela = MainWindow(projeto_inicial=_projeto_arg)
+      else:
+          janela = JanelaPicker(modo="boot")
+
+ARQUIVOS MODIFICADOS — SESSÃO [INFORMAÇÃO NÃO CONFIRMADA]
+───────────────────────────────────────────────────────────
+hein-basic/_APP_/Boas_Vindas/janela_picker.py
+hein-basic/_APP_/Boas_Vindas/lancador_projeto.py
+hein-basic/main.py
+
+================================================================================
+SESSÃO [INFORMAÇÃO NÃO CONFIRMADA] — CENTRALIZAÇÃO DE SUBPROCESSOS SEM CONSOLE (2026-08-11)
+================================================================================
+
+SINTOMA REPORTADO PELO USUÁRIO
+────────────────────────────────
+"Se não tiver esse console aberto antes de inicializar, ela não presta."
+
+1. _UTILITARIOS_/processo_sem_console.py — CONFIGURAÇÃO UNIVERSAL
+───────────────────────────────────────────────────────────────────
+PROBLEMA: as chamadas de subprocesso tinham configurações repetidas ou usavam
+somente CREATE_NO_WINDOW, deixando pontos sem a proteção STARTUPINFO/SW_HIDE.
+SOLUÇÃO:
+  ANTES:
+      creationflags=subprocess.CREATE_NO_WINDOW
+  DEPOIS:
+      **opcoes_processo_sem_console()
+
+2. CONSUMIDORES INTERNOS — APLICAÇÃO DA CONFIGURAÇÃO
+────────────────────────────────────────────────────────
+PROBLEMA: autocomplete, venv, busca de Python, Git, diff, debug, atualização e
+versionamento iniciavam processos com regras diferentes.
+SOLUÇÃO:
+  ANTES:
+      subprocess.Popen(comando, ...)
+  DEPOIS:
+      subprocess.Popen(comando, ..., **opcoes_processo_sem_console())
+
+A função retorna STARTUPINFO/SW_HIDE e CREATE_NO_WINDOW no Windows e retorna
+opções vazias nas demais plataformas. Comandos que abrem Explorer, navegador ou
+terminal visível não foram incluídos porque a janela é intencional.
+
+ARQUIVOS MODIFICADOS — SESSÃO [INFORMAÇÃO NÃO CONFIRMADA]
+───────────────────────────────────────────────────────────
+hein-basic-ide/_UTILITARIOS_/processo_sem_console.py
+hein-basic-ide/_UTILITARIOS_/hein_migrador_venv.py
+hein-basic-ide/_UTILITARIOS_/hein_python_picker.py
+hein-basic-ide/_UTILITARIOS_/dialogo_update.py
+hein-basic-ide/_UTILITARIOS_/gerenciador_pacotes.py
+hein-basic-ide/_UTILITARIOS_/versionamento.py
+hein-basic-ide/_APP_/Boas_Vindas/dialogo_novo_projeto.py
+hein-basic-ide/_APP_/Boas_Vindas/lancador_projeto.py
+hein-basic-ide/_APP_/main_window/workers.py
+hein-basic-ide/_EDITOR_/Autocomplete/autocomplete.py
+hein-basic-ide/_EDITOR_/Ui/diff_git_gutter.py
+hein-basic-ide/_PAINEL_ESQUERDO_/FileTree/_workers.py
+hein-basic-ide/_PAINEL_ESQUERDO_/FileTree/painel.py
+hein-basic-ide/_PAINEL_ESQUERDO_/Git/git_gerente.py
+hein-basic-ide/_TERMINAIS_/cliente_dap.py
+hein-basic-ide/_TERMINAIS_/Debug/cliente_dap.py
+hein-basic-ide/_TERMINAIS_/executavel_explorer.py
+
+REGRAS DE ATUALIZAÇÃO
+─────────────────────
+• Cada sessão nova acrescenta uma seção ao final.
+• A numeração de fixes permanece contínua entre sessões.
+• Estado atual e próximas áreas são seções vivas.
+• Não repetir regras globais do _DOC_PROJETO.

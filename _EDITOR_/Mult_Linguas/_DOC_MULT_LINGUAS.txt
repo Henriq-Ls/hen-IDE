@@ -1,0 +1,517 @@
+# 📁 _EDITOR_/Mult_Linguas/_DOC_MULT_LINGUAS.txt
+
+════════════════════════════════════════════════════════════════════════════════
+  MÓDULO: _EDITOR_/Mult_Linguas
+  Documento: _DOC_MULT_LINGUAS.txt
+  Última atualização: 2026-07-31 (Sessão 42: spell_check restaurado em PythonProvider)
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. OBJETIVO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mult_Linguas/ é o sistema de providers de linguagem do editor da hein IDE.
+Centraliza, para cada linguagem suportada, cinco responsabilidades:
+  1. Realce de sintaxe (qual QSyntaxHighlighter usar)
+  2. Outline / preview (qual modo e quais funções de parse chamar)
+  3. Dobramento (folding_fn — quais linhas são dobráveis)
+  4. Lint (se _ThreadLint deve rodar)
+  5. Execução (can_run — se F1/Run deve abrir ExecutorTerminal)
+
+O objetivo é que o Editor.py e o PainelOutline não precisem conhecer a
+linguagem diretamente — apenas chamam get_provider(ext) e delegam ao provider.
+
+Localização: hein/_EDITOR_/Mult_Linguas/
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. RESPONSABILIDADES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 LanguageManager (Mult_Linguas/__init__.py)
+  - Registro central: dict {'.ext': provider_instance}.
+  - _descobrir(): ao importar o módulo, percorre subpastas (exceto Base/ e
+    __pycache__), importa cada __init__.py e captura o atributo LANGUAGE_PROVIDER.
+    Usa duck-typing (hasattr 'extensions' + 'outline_mode') em vez de isinstance
+    para evitar falha silenciosa em namespace packages.
+  - get_provider(ext): normaliza a extensão (aceita '.py', 'py' ou caminho
+    completo); retorna o provider registrado ou PythonProvider como padrão.
+  - register(provider): registro manual para providers externos.
+  - is_registered(ext): usado por editor_dobramento para distinguir extensões
+    conhecidas de desconhecidas.
+
+2.2 LanguageProvider (Base/provider.py)
+  - Classe base com todos os atributos e métodos com valores padrão seguros.
+  - Atributos obrigatórios que cada provider define:
+      extensions      list[str]   ex: ['.py', '.pyw']
+      name            str         ex: 'Python'
+      outline_mode    str         ver tabela de modos abaixo
+      lint            bool        True → _ThreadLint roda
+      autocomplete    str         'jedi' | 'none'
+      spell_check     bool        True → CorretorOrtografico instanciado para
+                                  o arquivo; clique do meio e menu de contexto
+                                  ativam verificação ortográfica PT-BR
+  - Atributos de execução:
+      can_run         bool        True → F1 abre ExecutorTerminal (não-Python)
+      run_extensoes   list[str]   subset executável; [] = usa extensions inteiras
+  - Atributos para a barra inferior do PainelOutline:
+      status_rotulo_a   rótulo do 1.º label de contexto (ex: 'Classe')
+      status_rotulo_b   rótulo do 2.º label de contexto (ex: 'Função')
+      mostrar_erros     True → _lbl_ol_erros visível
+      rotulo_erros      'Erros' | 'Válido' | ''
+  - Métodos sobrescreváveis:
+      create_highlighter(document) → QSyntaxHighlighter
+          retorna o highlighter para o documento; padrão: _RealceInerte
+      folding_fn(texto, ext) → bool
+          retorna True se a linha é dobrável; padrão: False (nenhuma linha)
+      provide_outline(codigo, callback)
+          ASSÍNCRONO — inicia parse e chama callback(itens) ao concluir;
+          padrão: callback([]) (outline vazio)
+
+2.3 _RealceInerte (Base/provider.py)
+  - QSyntaxHighlighter que não aplica nenhuma cor — highlightBlock() é noop.
+  - Usado como padrão em create_highlighter() da base.
+  - Providers em fase inicial que ainda não têm realce real
+    (ex: Lua) NÃO sobrescrevem create_highlighter() — herdam a base.
+
+2.4 Modos de outline (outline_mode)
+  ┌───────────────────┬──────────────────────────────────────────────────────┐
+  │ Valor             │ Significado                                          │
+  ├───────────────────┼──────────────────────────────────────────────────────┤
+  │ 'python_ast'      │ AST Python em thread background (_ThreadOutlinePy)  │
+  │ 'tree_json'       │ Árvore estrutural JSON (síncrono)                   │
+  │ 'tree_xml'        │ Árvore estrutural XML                               │
+  │ 'tree_yaml'       │ Árvore estrutural YAML                              │
+  │ 'tree_js'         │ Árvore JS/TS (classes, funções, arrows, interfaces) │
+  │ 'tree_sh'         │ Árvore Shell (funções bash/zsh/ps1, labels batch)   │
+  │ 'tree_sql'        │ Árvore SQL (CREATE TABLE/VIEW/PROCEDURE/FUNCTION)   │
+  │ 'tree_c'          │ Árvore C/C++ (funções, structs, classes)            │
+  │ 'tree_make'       │ Árvore Makefile (targets)                           │
+  │ 'tree_lua'        │ Árvore Lua (funções, métodos de tabela)             │
+  │ 'tree_hein'       │ Árvore .hein (# Título / ## Subtítulo hierárquicos) │
+  │ 'preview_md'      │ Render Markdown em QTextBrowser                     │
+  │ 'preview_html'    │ Render HTML em QTextBrowser                         │
+  │ 'none'            │ Outline vazio (Texto, Dockerfile)                   │
+  └───────────────────┴──────────────────────────────────────────────────────┘
+
+2.5 Providers implementados
+  ┌──────────────────┬────────────────────────────────────┬──────────────┬─────────┬──────────┬──────────┐
+  │ Subpasta         │ Extensões                          │ outline_mode │ Realce  │ Lint/AC  │ can_run  │
+  ├──────────────────┼────────────────────────────────────┼──────────────┼─────────┼──────────┼──────────┤
+  │ Python/          │ .py  .pyw                          │ python_ast   │ ✅      │ ✅/jedi  │ —(Run)   │
+  │ JSON/            │ .json                              │ tree_json    │ ✅      │ ✗/none   │ —        │
+  │ HTML/            │ .html  .htm                        │ preview_html │ ✅      │ ✗/none   │ —        │
+  │ XML/             │ .xml                               │ tree_xml     │ ✅      │ ✗/none   │ —        │
+  │ YAML/            │ .yaml  .yml                        │ tree_yaml    │ ✅      │ ✗/none   │ —        │
+  │ Markdown/        │ .md  .markdown                     │ preview_md   │ ✅      │ ✗/none   │ —        │
+  │ JavaScript/      │ .js .ts .jsx .tsx .css .scss       │ tree_js      │ ✅      │ ✗/none   │ ✅ JS/TS │
+  │ Shell/           │ .sh .bash .zsh .ps1 .bat .cmd      │ tree_sh      │ ✅      │ ✗/none   │ ✅       │
+  │ SQL/             │ .sql                               │ tree_sql     │ ✅      │ ✗/none   │ —        │
+  │ C_CPP/           │ .c .cpp .h .hpp .cc .cxx .hh       │ tree_c       │ ✅      │ ✗/none   │ —        │
+  │ Makefile/        │ .mk  .makefile                     │ tree_make    │ ✅      │ ✗/none   │ ✅       │
+  │ Lua/             │ .lua                               │ tree_lua     │ ⏳fase2 │ ✗/none   │ ✅       │
+  │ Dockerfile/      │ .dockerfile                        │ none         │ ✅      │ ✗/none   │ —        │
+  │ Texto/           │ .txt .log .csv .ini .cfg .toml     │ none         │ ✗inerte │ ✗/none   │ —        │
+  │ Hein/            │ .hein                              │ tree_hein    │ ✅      │ ✗/none   │ —        │
+  └──────────────────┴────────────────────────────────────┴──────────────┴─────────┴──────────┴──────────┘
+
+  Notas:
+  · Hein tem_barra_formatacao=True → PainelOutline mostra barra de 7 botões
+    (Título, Subtítulo, Lista, Checklist, Destaque, Negrito, Link) acima da árvore.
+    estilo_visual='caderno' → Editor desenha linhas de fundo tipo papel pautado.
+  · Python can_run="—(Run)" significa que executa pelo fluxo RunOutputWidget
+    (terminal_run.py), não pelo ExecutorTerminal.
+  · Lua "⏳fase2" = usa _RealceInerte herdado da base; realce real está pendente.
+  · JavaScript can_run=True apenas para .js/.jsx/.ts/.tsx; CSS/SCSS não executam.
+  · Dockerfile e bare 'Makefile'/'Dockerfile' sem extensão: não reconhecidos ainda.
+
+2.6 Módulos de implementação por subpasta
+
+  Python/
+    realce.py     — RealceSintaxePython (QSyntaxHighlighter)
+                    keywords, built-ins, def/class, decoradores, strings simples/
+                    f-string/multilinhas (estado de bloco), comentários.
+                    Lê cores do dicionário de tema via aplicar_tema().
+                    Tags de Comentário hein (paleta fixa, independente de tema):
+                      #cod:  "título" — pinta o FUNDO do comentário e fica
+                             ATIVO em modo FUNDO (cod = 1ª+última letra do
+                             nome da cor: al=azul, vo=vermelho, po=preto,
+                             ao=amarelo, ca=cinza, co=ciano, ba=branca,
+                             ve=verde, ra=rosa, ro=roxo, mm=marrom, la=laranja).
+                      #cod;  "parágrafo"/referência pontual — pinta só a
+                             FONTE, em qualquer parte do arquivo, e fica
+                             ATIVO em modo FONTE.
+                      #:     herda o TIPO (fundo ou fonte) e a COR de quem
+                             estiver mais próximo acima — seja um #cod: ou
+                             um #cod; — sem redigitar o código.
+                    Estado combinado no block state do Qt: unidade = estado
+                    tríplice de string multilinha (0/1/2), dezena+ = índice
+                    da tag ativa (0 = nenhuma; 1..N = modo fundo; N+1..2N =
+                    modo fonte, N = _N_TAGS_COMENTARIO). Ver
+                    _PALETA_TAGS_COMENTARIO no topo do arquivo.
+                    Minimizar código da tag: o texto do marcador (#al:, #al;,
+                    #:) aparece discreto por padrão (fonte pequena/apagada,
+                    formato self._formato_tag_mini) e só volta ao tamanho
+                    normal na linha onde está o cursor ou dentro de uma
+                    seleção. Estado rastreado em _linha_cursor_tag /
+                    _bloco_selecao_inicio / _bloco_selecao_fim, atualizado via
+                    definir_linha_cursor_tag() e definir_selecao_tag() —
+                    chamados pelo CodeEditor (ver _EDITOR_/Editor/__init__.py)
+                    a partir de cursorPositionChanged/selectionChanged, com
+                    hasattr() porque _realce troca de classe por extensão de
+                    arquivo (só RealceSintaxePython tem esses métodos).
+                    Color preview / swatch: qualquer literal hex #RRGGBB ou
+                    #RGB no código (regex _re_cor_hex) ganha fundo com a
+                    própria cor e fonte preta/branca escolhida por contraste
+                    de luminância — formato calculado sob demanda e
+                    cacheado em _cache_formato_hex (não é fixo como a
+                    paleta das Tags de Comentário).
+    lint.py       — _ThreadLint (QThread)
+                    Roda pyflakes/flake8 em background com debounce;
+                    emite erros(dict) para ReguaErros e calha.
+    validador.py  — ValidadorImports + _ThreadValidador
+                    Detecta imports inválidos em thread background.
+
+  JSON/
+    realce.py     — RealceSintaxeJSON: chaves, strings, números, bool/null
+    outline.py    — analisar_json(), _json_para_itens(), _analisar_json_regex()
+
+  HTML/
+    realce.py     — RealceSintaxeHTML
+    outline.py    — popular_preview_html(codigo, widget_browser)
+
+  XML/
+    realce.py     — RealceSintaxeXML
+    outline.py    — analisar_xml() → árvore de tags
+
+  YAML/
+    realce.py     — RealceSintaxeYAML
+    outline.py    — analisar_yaml() → árvore de chaves
+
+  Markdown/
+    realce.py     — RealceSintaxeMD
+    outline.py    — popular_preview_md(), md_para_html()
+
+  JavaScript/
+    realce.py     — RealceSintaxeJS: keywords, strings, comentários, regex
+    outline.py    — analisar_js(): classes (com métodos filhos), funções,
+                    arrow functions, interfaces/types TS, enums
+
+  Shell/
+    realce.py     — RealceSintaxeShell: keywords, variáveis $, comentários #
+    outline.py    — analisar_sh(): funções bash/zsh/ps1, labels batch :nome
+
+  SQL/
+    realce.py     — RealceSintaxeSQL: keywords DDL/DML, strings, comentários --
+    outline.py    — analisar_sql(): CREATE TABLE/VIEW/PROCEDURE/FUNCTION/TRIGGER
+
+  C_CPP/
+    realce.py     — RealceSintaxeC: keywords, tipos, diretivas #, strings, comentários
+    outline.py    — analisar_c(): funções, structs, classes, namespaces
+
+  Makefile/
+    realce.py     — RealceSintaxeMakefile: targets, variáveis $(VAR), comentários #
+    outline.py    — analisar_make(): targets disponíveis
+
+  Lua/
+    realce.py     — ⏳ fase futura (RealceSintaxeLua — keywords, strings, comentários --)
+    outline.py    — analisar_lua(): funções, métodos de tabela
+
+  Dockerfile/
+    realce.py     — RealceSintaxeDockerfile: instruções FROM/RUN/COPY/ENV/ARG/etc.
+    (sem outline.py — outline_mode='none')
+
+  Hein/
+    realce.py     — RealceSintaxeHein: marcadores #/##/**/!!/ [[]] ocultos;
+                    conteúdo formatado com fonte/negrito/cor reais.
+                    Aplica tema via aplicar_tema(tema) — nunca hex hardcoded.
+    outline.py    — analisar_hein(): árvore hierárquica # Título → [## Subtítulo]
+    _DOC_HEIN.txt — documentação completa do provider
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ARQUIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mult_Linguas/
+│
+├── __init__.py                  # LanguageManager: _descobrir(), get_provider(),
+│                                #   register(), is_registered()
+│
+├── Base/
+│   ├── __init__.py
+│   └── provider.py              # LanguageProvider (base) + _RealceInerte
+│
+├── Python/
+│   ├── __init__.py              # PythonProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxePython
+│   ├── lint.py                  # _ThreadLint
+│   └── validador.py             # ValidadorImports + _ThreadValidador
+│
+├── JSON/
+│   ├── __init__.py              # JSONProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxeJSON
+│   └── outline.py               # analisar_json(), _json_para_itens()
+│
+├── HTML/
+│   ├── __init__.py              # HTMLProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxeHTML
+│   └── outline.py               # popular_preview_html()
+│
+├── XML/
+│   ├── __init__.py              # XMLProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxeXML
+│   └── outline.py               # analisar_xml()
+│
+├── YAML/
+│   ├── __init__.py              # YAMLProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxeYAML
+│   └── outline.py               # analisar_yaml()
+│
+├── Markdown/
+│   ├── __init__.py              # MarkdownProvider + LANGUAGE_PROVIDER
+│   ├── realce.py                # RealceSintaxeMD
+│   └── outline.py               # popular_preview_md(), md_para_html()
+│
+├── JavaScript/
+│   ├── __init__.py              # JavaScriptProvider + LANGUAGE_PROVIDER
+│   │                            #   .js .ts .jsx .tsx .css .scss
+│   │                            #   can_run=True (.js .jsx .ts .tsx)
+│   │                            #   folding: linhas terminando em { ou [
+│   ├── realce.py                # RealceSintaxeJS
+│   └── outline.py               # analisar_js()
+│
+├── Shell/
+│   ├── __init__.py              # ShellProvider + LANGUAGE_PROVIDER
+│   │                            #   .sh .bash .zsh .ps1 .bat .cmd
+│   │                            #   can_run=True
+│   ├── realce.py                # RealceSintaxeShell
+│   └── outline.py               # analisar_sh()
+│
+├── SQL/
+│   ├── __init__.py              # SQLProvider + LANGUAGE_PROVIDER
+│   │                            #   folding: BEGIN, CASE, linhas terminando com (
+│   ├── realce.py                # RealceSintaxeSQL
+│   └── outline.py               # analisar_sql()
+│
+├── C_CPP/
+│   ├── __init__.py              # CCppProvider + LANGUAGE_PROVIDER  (name='C/C++')
+│   │                            #   .c .cpp .h .hpp .cc .cxx .hh
+│   │                            #   folding: linhas terminando com {
+│   ├── realce.py                # RealceSintaxeC
+│   └── outline.py               # analisar_c()
+│
+├── Makefile/
+│   ├── __init__.py              # MakefileProvider + LANGUAGE_PROVIDER  (can_run=True)
+│   │                            #   .mk .makefile
+│   │                            #   folding: target lines (não-tab, terminam com :)
+│   │                            #   NOTA: bare 'Makefile' sem extensão não coberto
+│   ├── realce.py                # RealceSintaxeMakefile
+│   └── outline.py               # analisar_make()
+│
+├── Lua/
+│   ├── __init__.py              # LuaProvider + LANGUAGE_PROVIDER  (can_run=True)
+│   │                            #   folding: function, if/then, do, repeat, for/do, while/do
+│   ├── realce.py                # ⏳ fase futura — RealceSintaxeLua ainda não implementado
+│   └── outline.py               # analisar_lua()
+│
+├── Dockerfile/
+│   ├── __init__.py              # DockerfileProvider + LANGUAGE_PROVIDER
+│   │                            #   folding: linhas com continuação \ (multi-linha)
+│   │                            #   NOTA: bare 'Dockerfile' sem extensão não coberto
+│   └── realce.py                # RealceSintaxeDockerfile
+│
+├── Texto/
+│   └── __init__.py              # TextoProvider + LANGUAGE_PROVIDER
+│                                #   sem realce, sem outline, sem execução
+│
+└── Hein/
+    ├── __init__.py              # HeinProvider + LANGUAGE_PROVIDER
+    │                            #   extensions=['.hein'], outline_mode='tree_hein'
+    │                            #   can_run=False, tem_barra_formatacao=True
+    │                            #   estilo_visual='caderno'
+    │                            #   folding_fn: linhas iniciando com # (títulos)
+    ├── realce.py                # RealceSintaxeHein (marcador oculto + conteúdo formatado)
+    ├── outline.py               # analisar_hein(): # Título → [## Subtítulo]
+    └── _DOC_HEIN.txt            # documentação completa
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. FLUXO INTERNO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 Auto-descoberta na importação
+  ──────────────────────────────────────────────────────────────────────────
+  import _EDITOR_.Mult_Linguas
+    → _descobrir() executado
+    → itera subpastas (exceto Base/, __pycache__)
+    → importlib.import_module('_EDITOR_.Mult_Linguas.<Subpasta>')
+    → getattr(mod, 'LANGUAGE_PROVIDER', None)
+    → duck-typing: hasattr(p, 'extensions') and hasattr(p, 'outline_mode')
+    → _registro['.ext'] = provider  (para cada ext em provider.extensions)
+    → subpasta == 'Python' → _provider_padrao = provider
+    → falha de importação → log.aviso() silencioso (nunca trava a IDE)
+  ──────────────────────────────────────────────────────────────────────────
+
+4.2 Abertura de arquivo no Editor
+  ──────────────────────────────────────────────────────────────────────────
+  Editor.abrir_arquivo(caminho)
+    → ext = os.path.splitext(caminho)[1]
+    → provider = get_provider(ext)
+    → highlighter = provider.create_highlighter(document)
+    → if provider.lint: _ThreadLint.iniciar()
+    → if provider.autocomplete == 'jedi': GerenciadorAutocomplete.ativar()
+  ──────────────────────────────────────────────────────────────────────────
+
+4.3 Atualização do Outline
+  ──────────────────────────────────────────────────────────────────────────
+  PainelOutline._atualizar()
+    → provider = get_provider(ext_do_arquivo_ativo)
+    → despacha por provider.outline_mode:
+        'python_ast'   → _ThreadOutlinePy.start() → _popular_arvore_python()
+        'tree_json'    → _analisar_json()   (→ JSON/outline.py)
+        'tree_xml'     → _analisar_xml()    (→ XML/outline.py)
+        'tree_yaml'    → _analisar_yaml()   (→ YAML/outline.py)
+        'tree_js'      → _analisar_js()     (→ JavaScript/outline.py)
+        'tree_sh'      → _analisar_sh()     (→ Shell/outline.py)
+        'tree_sql'     → _analisar_sql()    (→ SQL/outline.py)
+        'tree_c'       → _analisar_c()      (→ C_CPP/outline.py)
+        'tree_make'    → _analisar_make()   (→ Makefile/outline.py)
+        'tree_lua'     → _analisar_lua()    (→ Lua/outline.py)
+        'tree_hein'    → _analisar_hein()   (→ Hein/outline.py)
+        'preview_md'   → _popular_preview_md()   (→ Markdown/outline.py)
+        'preview_html' → _popular_preview_html() (→ HTML/outline.py)
+        'none'         → árvore limpa
+  ──────────────────────────────────────────────────────────────────────────
+
+4.4 Execução de arquivo — F1 / botão Run
+  ──────────────────────────────────────────────────────────────────────────
+  main_window._executar_arquivo()
+    → provider = get_provider(ext)
+    → if provider.can_run == True:
+          terminal_tabs.abrir_executor_terminal(provider.name, arquivo)
+          → cria ExecutorTerminal em _TERMINAIS_/Mult_Terminais/
+    → if provider.can_run == False:
+          return  # silencioso — sem mensagem de erro ao usuário
+    → Python: fluxo especial → RunOutputWidget (terminal_run.py)
+  ──────────────────────────────────────────────────────────────────────────
+
+4.5 Compatibilidade retroativa (shims)
+  ──────────────────────────────────────────────────────────────────────────
+  Funcionalidades/realce_sintaxe.py
+    → from _EDITOR_.Mult_Linguas.Python.realce import RealceSintaxePython
+  Funcionalidades/realce_sintaxe_json.py
+    → from _EDITOR_.Mult_Linguas.JSON.realce import RealceSintaxeJSON
+  Funcionalidades/realce_sintaxe_html.py
+    → from _EDITOR_.Mult_Linguas.HTML.realce import RealceSintaxeHTML
+  Funcionalidades/validador_imports.py
+    → from _EDITOR_.Mult_Linguas.Python.validador import (
+           ValidadorImports, _ThreadValidador)
+  ──────────────────────────────────────────────────────────────────────────
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. INTEGRAÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Editor.py (Editor principal)
+    - Importa get_provider() para decidir highlighter, lint e autocomplete.
+    - Importa _ThreadLint de Mult_Linguas/Python/lint.py.
+
+  Outline/painel_outline.py
+    - Chama get_provider() para despachar o modo do outline.
+    - 13 métodos delegadores chamam funções de Mult_Linguas/ diretamente:
+      _analisar_json, _analisar_xml, _analisar_yaml,
+      _analisar_js, _analisar_sh, _analisar_sql,
+      _analisar_c, _analisar_make, _analisar_lua, _analisar_hein,
+      _popular_preview_md, _popular_preview_html
+      + _analisar_json_regex (fallback JSON)
+    - _construir_barra_formatacao(): barra de 7 botões Hein (Título, Subtítulo,
+      Lista, Checklist, Destaque, Negrito, Link), oculta por padrão.
+    - Ao trocar arquivo: _barra_formatacao.setVisible(provider.tem_barra_formatacao)
+
+  _APP_/main_window.py
+    - _executar_arquivo() usa provider.can_run para decidir entre
+      ExecutorTerminal e RunOutputWidget (Python).
+
+  _TERMINAIS_/Mult_Terminais/terminal_executor.py
+    - ExecutorTerminal: executa arquivos de linguagens com can_run=True.
+    - Criado por TerminalTabWidget.abrir_executor_terminal().
+
+  _TERMINAIS_/Mult_Terminais/executor_explorer.py
+    - ExecutorExplorer: painel visual para configurar executores.json.
+    - Listado por _CONFIGURA_/gerenciador_executores.
+
+  _CONFIGURA_/gerenciador_tema
+    - create_highlighter() de cada provider chama tema_global().dados().
+
+  _LOG_/log
+    - _descobrir() usa log.aviso() para falhas — nunca print().
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. REGRAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  RM-01  Cada subpasta DEVE expor LANGUAGE_PROVIDER = <Classe>Provider().
+         O LanguageManager só lê esse atributo — nunca instancia classes
+         diretamente.
+
+  RM-02  Duck-typing obrigatório em _descobrir() — nunca usar isinstance().
+         Razão: namespace packages sem __init__.py podem carregar a mesma
+         classe por dois caminhos distintos, fazendo isinstance retornar False
+         mesmo para uma instância válida.
+
+  RM-03  create_highlighter() e folding_fn() NUNCA bloqueiam a UI thread.
+         Parse pesado (AST, xml.etree) vai em provide_outline() com callback.
+
+  RM-04  Cores de realce SEMPRE via tema_global().dados() — nunca hex
+         hardcoded dentro dos módulos de Mult_Linguas/.
+
+  RM-05  Shims em Funcionalidades/ são temporários. Não remover até confirmar
+         que nenhum módulo externo a Mult_Linguas/ importa de
+         Funcionalidades/realce_*.py ou validador_imports.py.
+
+  RM-06  Adicionar nova linguagem = criar subpasta + __init__.py com
+         LANGUAGE_PROVIDER. Nenhuma alteração necessária em __init__.py do
+         LanguageManager — a descoberta é automática.
+
+  RM-07  Provider com can_run=True e run_extensoes=[] executa TODAS as
+         extensões do provider. Use run_extensoes para restringir
+         (ex: JavaScript executa .js/.jsx/.ts/.tsx, mas não .css/.scss).
+
+  RM-08  F1/Run em provider com can_run=False deve retornar silenciosamente
+         (return sem ação) — nunca exibir erro ou abrir terminal Python.
+
+  RM-09  Providers em fase inicial sem realce real NÃO sobrescrevem
+         create_highlighter() — herdam _RealceInerte da base.
+         NUNCA usar _RealceInerte sem importá-lo explicitamente se o método
+         for sobrescrito na subclasse.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. OBSERVAÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - O bug de registro de providers JSON e HTML (causava outline vazio /
+    "Linha 1: Sintaxe Inválida") foi provocado por isinstance() verificando
+    contra LanguageProvider importado por dois caminhos distintos.
+    A solução (duck-typing com hasattr) foi implementada em _descobrir().
+
+  - PythonProvider é o provider padrão para extensões não registradas.
+    Arquivo .xyz desconhecido receberá realce Python — intencional.
+
+  - Bug histórico (2026-07-08): JavaScript/__init__.py, C_CPP/__init__.py e
+    Makefile/__init__.py foram gerados com strings de regex não fechadas
+    (SyntaxError), impedindo o _descobrir() de registrar os três providers.
+    Corrigidos reescrevendo os arquivos com regex corretas (_RE_*_FOLD).
+
+  - Bug histórico (2026-07-08): Lua/__init__.py sobrescrevia create_highlighter()
+    usando _RealceInerte sem importá-lo (NameError em runtime).
+    Corrigido removendo o override — herda da base.
+
+  - Bare filenames sem extensão ('Makefile', 'GNUmakefile', 'Dockerfile'):
+    não são reconhecidos pelo get_provider() (que normaliza por extensão).
+    Futuro: matching por basename no LanguageManager.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

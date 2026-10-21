@@ -1,0 +1,204 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MAPA DE IMPLEMENTAÇÃO — SISTEMA DE LICENÇA
+Sessão 20 · 2026-07-08 · aguardando autorização para implementar
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CONTRATO FIXO DA API (definido pelo site — não muda):
+  POST /api/licenca/validar
+  Body:     { "serial": string | null, "maquina_id": string }
+  Resposta: { "valida": bool, "modo": string, "expira_em": string|null,
+              "mensagem": string }
+  modos:    "gratuito" | "licenciado" | "expirado" | "sem_licenca"
+
+ESTRATÉGIA — DUAS FASES:
+  Fase 1 (agora)  → VERIFICACAO_ONLINE = False — IDE abre sem chamar API nenhuma
+  Fase 2 (futura) → VERIFICACAO_ONLINE = True  — IDE valida contra a API do site
+
+  Transição: mudar VERIFICACAO_ONLINE para True num release futuro,
+  somente quando o site estiver no ar com COBRANCA_ATIVA=true.
+
+
+══════════════════════════════════════════════════════════════════════════════
+ARQUIVO 1 — _CONFIGURA_/__init__.py  (linha ~38, ao lado de VERSAO_APP)
+══════════════════════════════════════════════════════════════════════════════
+
+  Adicionar três constantes novas:
+
+    VERIFICACAO_ONLINE       = False
+    # False → IDE ignora tudo, abre normal (Fase 1 gratuita)
+    # True  → IDE chama API e valida serial (Fase 2 paga)
+
+    API_LICENCA_URL          = "https://[dominio]/api/licenca/validar"
+    # Atualizar quando o deploy do site estiver definido.
+
+    LICENCA_TIMEOUT_SEGUNDOS = 3
+    # Timeout máximo da chamada HTTP — nunca travar a abertura.
+
+  Nenhuma outra constante do arquivo é alterada.
+
+
+══════════════════════════════════════════════════════════════════════════════
+ARQUIVO 2 — _APPDATA_/gerenciador.py  (classe GerenciadorAppData)
+══════════════════════════════════════════════════════════════════════════════
+
+  Adicionar duas propriedades ao Singleton, ao lado das propriedades existentes:
+
+    @property
+    def licenca_cache(self) -> str:
+        """Caminho de %APPDATA%\\hein\\licenca_cache.json"""
+        return os.path.join(self.raiz, "licenca_cache.json")
+
+    @property
+    def maquina_id_path(self) -> str:
+        """Caminho de %APPDATA%\\hein\\maquina_id.txt"""
+        return os.path.join(self.raiz, "maquina_id.txt")
+
+  licenca_cache.json e maquina_id.txt ficam na raiz de %APPDATA%\\hein\\
+  (mesma pasta que layout.json, recentes.json). Sem nova subpasta.
+  _SUBPASTAS em _APPDATA_/estrutura.py: não mexer.
+
+
+══════════════════════════════════════════════════════════════════════════════
+ARQUIVO 3 — _UTILITARIOS_/licenca.py  (NOVO — não existe ainda)
+══════════════════════════════════════════════════════════════════════════════
+
+  Todo o cérebro do sistema. Funções:
+
+  ── _gerar_maquina_id() → str ────────────────────────────────────────────
+    1. Tenta ler maquina_id.txt do AppData — se existe, retorna direto.
+    2. No Windows: lê HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid (winreg)
+       Fallback: str(uuid.getnode())
+    3. Retorna hashlib.sha256(raw.encode()).hexdigest()[:16].upper()
+    4. Salva em maquina_id.txt para reutilizar sempre.
+    Dependências: winreg (stdlib Windows), hashlib, uuid (stdlib)
+
+  ── _ler_cache() → dict | None ───────────────────────────────────────────
+    Lê licenca_cache.json do AppData.
+    Retorna None se ausente, vazio ou JSON corrompido.
+
+  ── _salvar_cache(resposta: dict) → None ─────────────────────────────────
+    Salva { ...resposta_api..., "timestamp": datetime.utcnow().isoformat() }
+    em licenca_cache.json.
+
+  ── _cache_valido(cache: dict) → bool ────────────────────────────────────
+    TTL depende do campo "modo" gravado no cache:
+      "gratuito"   → 30 dias
+      "licenciado" → 72 horas
+      qualquer outro → 72 horas
+    Compara datetime.utcnow() com cache["timestamp"] + TTL.
+
+  ── verificar_licenca(serial: str | None = None) → dict ──────────────────
+
+    FLUXO COMPLETO (com brecha corrigida):
+
+      1. Se VERIFICACAO_ONLINE is False
+           → retorna {"valida": True, "modo": "gratuito"} IMEDIATAMENTE.
+             (Fase 1: nem toca cache, nem faz rede. Zero impacto.)
+
+      — A partir daqui só executa em Fase 2 (VERIFICACAO_ONLINE = True) —
+
+      2. Lê cache local (_ler_cache()).
+
+      3. Se cache existe E _cache_valido(cache) is True
+           → retorna cache. (Hit de cache, sem rede.)
+
+      4. Tenta POST /api/licenca/validar com timeout=LICENCA_TIMEOUT_SEGUNDOS.
+           Body: { "serial": serial ou cache.get("serial"), "maquina_id": _gerar_maquina_id() }
+
+      5. Se API responde com sucesso
+           → _salvar_cache(resposta) → retorna resposta.
+
+      6. Se timeout ou erro de rede E cache existe (mesmo vencido)
+           → retorna cache. (Grace period: até 7 dias após expirar o TTL.)
+             O chamador em main.py trata como válido neste caso.
+
+      7. Se timeout ou erro de rede E SEM cache algum
+           → retorna { "valida": False, "modo": "sem_licenca",
+                        "mensagem": "Não foi possível verificar sua licença.\n"
+                                    "Conecte à internet e tente novamente." }
+             BLOQUEIA — não existe fallback gratuito em Fase 2.
+
+    NOTA SOBRE A BRECHA (corrigida no passo 7):
+      O passo 1 garante que em Fase 1 (VERIFICACAO_ONLINE=False) a função
+      retorna antes de qualquer fallback. Assim o "libera sem cache" do
+      passo 7 só é alcançado em Fase 2, onde bloquear é o comportamento
+      correto. Desligar a internet na primeira abertura não adianta:
+      sem cache e sem API → bloqueio com mensagem clara.
+
+  Dependências: requests (já no projeto), hashlib, json, datetime,
+                winreg (stdlib Windows), uuid (stdlib)
+
+
+══════════════════════════════════════════════════════════════════════════════
+ARQUIVO 4 — main.py  (ponto de entrada — entre appdata e MainWindow)
+══════════════════════════════════════════════════════════════════════════════
+
+  Ordem atual de inicialização (não muda):
+    1. QApplication
+    2. QLockFile
+    3. carregar_fontes()
+    4. appdata.inicializar()     ← inserir bloco de licença logo abaixo
+    5. MainWindow()              ← só instancia se licença OK
+
+  Bloco a inserir entre os passos 4 e 5:
+
+    from _CONFIGURA_ import VERIFICACAO_ONLINE
+    if VERIFICACAO_ONLINE:
+        from _UTILITARIOS_.licenca import verificar_licenca
+        _resultado = verificar_licenca()
+        if not _resultado.get("valida"):
+            from _UTILITARIOS_.licenca_dialog import LicencaDialog
+            _dlg = LicencaDialog(_resultado)
+            if not _dlg.exec():
+                sys.exit(0)
+
+  Quando VERIFICACAO_ONLINE = False (Fase 1): bloco inteiro ignorado.
+  Zero impacto na inicialização atual, zero imports extras, zero rede.
+
+
+══════════════════════════════════════════════════════════════════════════════
+ARQUIVO 5 — _UTILITARIOS_/licenca_dialog.py  (NOVO — somente Fase 2)
+══════════════════════════════════════════════════════════════════════════════
+
+  QDialog modal exibido quando valida=False em Fase 2. Conteúdo:
+
+    - Label: "A hein IDE agora é paga."
+    - Label monospace com o maquina_id do usuário (para suporte)
+    - Campo de texto: "Cole aqui a chave recebida por e-mail"
+    - Botão [ Ativar ]   → chama verificar_licenca(serial=chave_digitada)
+                           Se valida=True: accept(). Se não: mostra erro inline.
+    - Botão [ Comprar ]  → webbrowser.open(LINK_COMPRA)  (URL da plataforma)
+    - Botão [ Fechar ]   → reject() → main.py chama sys.exit(0)
+
+  NÃO implementar agora. Implementar somente quando VERIFICACAO_ONLINE virar True.
+
+
+══════════════════════════════════════════════════════════════════════════════
+FILA — ordem de implementação
+══════════════════════════════════════════════════════════════════════════════
+
+  Legenda: [ ] pendente   [✓] feito   [~] em andamento
+
+  [ ] LIC-01  _CONFIGURA_/__init__.py
+                3 constantes: VERIFICACAO_ONLINE=False, API_LICENCA_URL, LICENCA_TIMEOUT_SEGUNDOS
+                Alteração cirúrgica — ~3 linhas adicionadas.
+
+  [ ] LIC-02  _APPDATA_/gerenciador.py
+                2 propriedades: licenca_cache, maquina_id_path
+                Sem nova subpasta, sem alteração em estrutura.py.
+
+  [ ] LIC-03  _UTILITARIOS_/licenca.py
+                Módulo novo completo: _gerar_maquina_id, _ler_cache,
+                _salvar_cache, _cache_valido, verificar_licenca.
+
+  [ ] LIC-04  main.py
+                Bloco if VERIFICACAO_ONLINE: entre appdata e MainWindow.
+                Ignorado completamente enquanto VERIFICACAO_ONLINE=False.
+
+  [ ] LIC-05  _UTILITARIOS_/licenca_dialog.py
+                SOMENTE na Fase 2. Não implementar agora.
+
+  Dependências: LIC-01 → LIC-02 → LIC-03 → LIC-04   (nesta ordem)
+  LIC-05 não depende dos outros — vai para o fim, quando chegar a Fase 2.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

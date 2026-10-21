@@ -1,0 +1,260 @@
+📁 _UTILITARIOS_/_ajuda_/_DOC_MODO_USO_IMPLEMENTACAO.txt
+═══════════════════════════════════════════════════════════════════════════
+MÓDULO DE AJUDA (?) — como usar, como funciona, quando usar
+═══════════════════════════════════════════════════════════════════════════
+
+Pra quem for ler isso no futuro (IA ou humano): este módulo existe pra que
+TODO botão de ajuda "?" da IDE hein tenha o MESMO visual e o MESMO jeito de
+mostrar conteúdo — nunca duplique esse código copiando/colando de uma tela
+pra outra. Se precisar de ajuda numa tela nova, é sempre os mesmos 2 passos
+lá embaixo (ver "COMO ADICIONAR").
+
+Regras do dono do projeto que valem SEMPRE, sem exceção, pra qualquer
+botão de ajuda novo que for criado (isso é o motivo de este módulo existir
+em vez de cada tela fazer o seu próprio jeito):
+  1. O botão fica sempre apagado/fosco — só acende (fica visível) quando o
+     mouse passa por cima. Minimalista: não pode "gritar" na tela.
+  2. O popup que abre no clique tem que ser o MESMO padrão em toda a IDE —
+     mesmo QMessageBox, mesmo jeito de pegar cor do tema, mesmo tamanho de
+     fonte/estilo. Não pode inventar um popup diferente pra cada tela.
+  3. O TEXTO dentro do popup também tem que ser minimalista — direto,
+     curto, sem parágrafo enorme explicando história. Lista com bullet
+     (<ul><li>) é melhor que texto corrido. Ver seção 5.
+  4. Se o texto menciona um atalho de teclado, ele TEM que vir dinâmico
+     (lido do atalhos.json na hora), nunca escrito fixo — se o usuário
+     remapear a tecla, a ajuda já mostra a tecla nova sem editar nada.
+     Ver seção 6.
+  5. Toda ajuda tem que aceitar (opcionalmente) um link pra uma página do
+     site — o dono do projeto vai criar páginas de ajuda mais completas no
+     site depois, e cada popup pode linkar pra lá. Ver seção 3 e 7.
+
+
+───────────────────────────────────────────────────────────────────────────
+1. POR QUE ESSE MÓDULO EXISTE
+───────────────────────────────────────────────────────────────────────────
+O usuário (dono do projeto) quer botões de ajuda "?" espalhados por quase
+toda janela/painel da IDE (busca, tarefas, outline, filetree, futuras
+telas de curso, etc.). Pra isso não virar um Frankenstein de estilos e
+textos diferentes, toda a lógica comum mora aqui:
+
+  - o BOTÃO em si (ícone, tamanho, cor, comportamento de hover)
+  - o POPUP que abre ao clicar (QMessageBox com RichText, cor do tema)
+  - o botão opcional "Abrir no site" (quando a ajuda tiver uma página web)
+  - o helper de ATALHOS DINÂMICOS (mostra a tecla ATUAL, nunca hardcoded)
+
+O CONTEÚDO de cada tela (o texto explicando "como usar X") fica separado,
+um arquivo por tela, dentro de `conteudos/`. Isso é o que já existia sendo
+copiado à mão em tarefas_explorer.py e barra_buscas.py antes deste módulo
+existir — agora tudo compartilha a mesma base.
+
+
+───────────────────────────────────────────────────────────────────────────
+2. ESTRUTURA DE ARQUIVOS
+───────────────────────────────────────────────────────────────────────────
+_UTILITARIOS_/_ajuda_/
+    __init__.py                    → criar_botao_ajuda() e mostrar_ajuda()
+    atalhos.py                     → tecla_de(acao) — tecla atual de uma ação
+    _DOC_MODO_USO_IMPLEMENTACAO.txt → este arquivo
+    conteudos/
+        __init__.py                → índice dos conteúdos existentes
+        busca.py                   → texto() da ajuda da barra de busca
+        tarefas.py                 → texto() da ajuda do painel de Tarefas
+        <nova_tela>.py             → um arquivo novo pra cada tela nova
+
+NUNCA edite o texto de ajuda de uma tela dentro do arquivo da própria tela
+(ex: dentro de barra_buscas.py). O texto sempre mora em
+`_ajuda_/conteudos/<nome_da_tela>.py`. Isso é o que garante que, se um dia
+quiser mudar o estilo de TODOS os popups de uma vez, só edita este módulo
+— não precisa caçar em 20 arquivos diferentes.
+
+  - Onde fica GUARDADO o BOTÃO (visual/comportamento) → __init__.py
+  - Onde fica GUARDADO o CONTEÚDO (texto de cada tela) → conteudos/*.py
+  - Onde fica GUARDADA a lógica de TECLA ATUAL          → atalhos.py
+
+
+───────────────────────────────────────────────────────────────────────────
+3. COMO ADICIONAR UM BOTÃO DE AJUDA NUMA TELA NOVA (2 passos)
+───────────────────────────────────────────────────────────────────────────
+
+PASSO 1 — criar o conteúdo em `_ajuda_/conteudos/<nome>.py`:
+
+    # 📁 _UTILITARIOS_/_ajuda_/conteudos/minha_tela.py
+    """Texto de ajuda de <onde fica essa tela>."""
+    from _CONFIGURA_.gerenciador_tema import tema_global
+
+    def texto() -> str:
+        verde = tema_global().cor("grafo.no_texto", "#4ec994")
+        return f"""
+    <h3 style='color:{verde}'>Título da ajuda</h3>
+    <p>Explicação curta, direto ao ponto (ver regra de minimalismo na
+    seção 5). RichText simples: <b>, <ul>, <li>, <code>, <br>.</p>
+    """
+
+  ⚠️ IMPORTANTE — SE o conteúdo depender de algo que pode mudar em tempo de
+  execução (atalho de teclado, alguma config do usuário, o estado de um
+  curso sendo editado, etc.), NÃO escreva o valor fixo no texto. Busque o
+  valor ATUAL dentro da própria função `texto()`, porque ela só é chamada
+  no momento do clique — assim a ajuda NUNCA fica desatualizada. Exemplo
+  real disso: `conteudos/busca.py`, que usa `atalhos.tecla_de(...)` pra
+  mostrar a tecla mapeada agora, e não uma tecla escrita à mão.
+
+PASSO 2 — criar o botão na tela, usando `criar_botao_ajuda`:
+
+    from _UTILITARIOS_._ajuda_ import criar_botao_ajuda
+    from _UTILITARIOS_._ajuda_.conteudos import minha_tela as _ajuda_minha_tela
+
+    self._btn_ajuda = criar_botao_ajuda(
+        _ajuda_minha_tela.texto,        # função texto() -> str (NÃO chame ela, passe a função)
+        titulo="Como usar Minha Tela",  # título da janela do popup
+        tooltip="Como usar minha tela", # tooltip do botão (some no hover)
+        parent=self,                    # widget pai (normalmente self)
+    )
+    algum_layout.addWidget(self._btn_ajuda)
+
+  Se a tela tiver (ou vier a ter) uma página de ajuda completa no site,
+  passe também:
+    link="https://seusite.com/ajuda/minha-tela"
+  Isso adiciona um botão extra "Abrir no site  ↗" dentro do popup, que
+  abre a URL no navegador padrão do usuário. É por isso que o parâmetro
+  `link` existe em `criar_botao_ajuda` desde já — mesmo telas que hoje não
+  têm link nenhum já ficam prontas pra receber um assim que o site
+  existir, sem precisar mudar a estrutura do botão depois.
+
+
+───────────────────────────────────────────────────────────────────────────
+4. VISUAL DO BOTÃO — REGRA FIXA, NÃO MUDAR CASO A CASO
+───────────────────────────────────────────────────────────────────────────
+O botão tem que ser DISCRETO — o usuário pediu isso explicitamente: o
+botão fica sempre apagado/fosco, quase invisível, e só "acende" quando o
+mouse passa por cima. É o MESMO comportamento do botão ✕ de fechar que já
+existe na barra de busca (ele também é apagado e só reage no hover).
+
+Isso é feito pelo `_ESTILO_ICONE` dentro de `_ajuda_/__init__.py`:
+
+    "QPushButton { background: transparent; border: none; }"
+    "QPushButton:hover { background: rgba(255,255,255,0.07); border-radius: 3px; }"
+
+Ou seja: fundo transparente sempre, e no hover aparece um branco bem fraco
+(7% de opacidade) atrás do ícone, só pra indicar "isso é clicável". NÃO dá
+cor de fundo fixa, NÃO deixa borda, NÃO aumenta o ícone. Ícone usado:
+`mdi.help-circle-outline` (via `icone_tema`), 14x14px, botão de 22x22px —
+mesmo tamanho/proporção usado nos outros botões-ícone da IDE (ex: btn_run
+e btn_del de tarefas_explorer.py, btn_pasta etc).
+
+Se um dia quiser mudar esse visual (cor do hover, tamanho do ícone, etc.),
+mude SÓ em `_ESTILO_ICONE` dentro de `_ajuda_/__init__.py` — todos os
+botões de ajuda da IDE mudam juntos, automaticamente. NUNCA copie esse
+estilo pra dentro do arquivo de uma tela — se copiar, no dia que mudar
+aqui, aquela tela fica desalinhada das outras.
+
+
+───────────────────────────────────────────────────────────────────────────
+5. TEXTO DO POPUP — TAMBÉM TEM QUE SER MINIMALISTA, E É SEMPRE O MESMO POPUP
+───────────────────────────────────────────────────────────────────────────
+Não é só o botão que tem que ser discreto — a ESCRITA dentro do popup
+também. Regra do dono do projeto:
+
+  - Frases curtas, diretas. Sem parágrafo longo contando história.
+  - Preferir lista (<ul><li>...</li></ul>) a texto corrido — é mais rápido
+    de escanear visualmente.
+  - Um <h3> só com o nome da tela/funcionalidade, no topo, com a cor de
+    destaque do tema (ver seção 6).
+  - Separar em blocos pequenos com <b>Subtítulo:</b> quando tiver mais de
+    um assunto (ex: "Prefixos:", "Atalhos:", "Exemplos:") — olhe
+    `conteudos/busca.py` e `conteudos/tarefas.py` como referência de
+    tamanho e formato aceitável. Se o seu texto novo estiver maior que os
+    dois, provavelmente está verboso demais — cortar.
+
+O POPUP em si (a "moldura": QMessageBox, RichText, fundo/cor vindo do
+tema, botão "Abrir no site" quando tem link) é SEMPRE o mesmo em qualquer
+tela — isso é o `mostrar_ajuda()` dentro de `_ajuda_/__init__.py`, e ele
+já é chamado automaticamente pelo botão criado com `criar_botao_ajuda`.
+NUNCA monte um QMessageBox novo na mão dentro de uma tela — se fizer isso,
+aquele popup vai ficar com fundo/cor diferente do resto da IDE assim que
+o usuário trocar de tema.
+
+
+───────────────────────────────────────────────────────────────────────────
+6. CORES DENTRO DO TEXTO DE AJUDA
+───────────────────────────────────────────────────────────────────────────
+O POPUP em si (fundo, cor do texto) já pega a cor do tema atual sozinho,
+dentro de `mostrar_ajuda()` — não precisa fazer nada pra isso.
+
+Mas se o SEU texto de ajuda quiser destacar algo (títulos, palavras-chave),
+pegue a cor de destaque do tema ATUAL, nunca escreva um "#4ec994" (ou
+qualquer hex) direto no meio do html sem vir do tema:
+
+    from _CONFIGURA_.gerenciador_tema import tema_global
+    verde = tema_global().cor("grafo.no_texto", "#4ec994")
+    # o segundo argumento é só o valor de reserva (fallback) se o tema
+    # atual não tiver essa chave — nunca é o valor "oficial"
+
+Isso garante que se o usuário trocar o tema da IDE, TODOS os popups de
+ajuda acompanham a cor nova automaticamente.
+
+
+───────────────────────────────────────────────────────────────────────────
+7. TECLAS/ATALHOS DENTRO DO TEXTO DE AJUDA — SEMPRE DINÂMICO
+───────────────────────────────────────────────────────────────────────────
+Se a sua ajuda precisa mostrar "aperte tal tecla pra fazer tal coisa",
+NUNCA escreva a tecla fixa (ex: "Ctrl+J") direto no texto — o usuário pode
+remapear atalhos no atalhos.json (ele tem essa tela de edição na IDE) e o
+texto ficaria errado sem ninguém perceber, o que é exatamente o problema
+que este módulo existe pra evitar.
+
+Use sempre:
+
+    from _UTILITARIOS_._ajuda_.atalhos import tecla_de
+    tecla_de("busca::BuscarNoProjeto")   # → "Ctrl+J" (ou o que estiver mapeado AGORA)
+
+`tecla_de(acao)` lê o `_CONFIGURA_/atalhos.json` NO MOMENTO em que é
+chamada (nunca guarda valor em cache) e devolve a tecla já formatada (ex:
+"Ctrl+J"), ou "—" se a ação não estiver mapeada. A string `acao` é a mesma
+chave usada em `_CONFIGURA_/gerenciador_atalhos.py` (dict `_ACOES`), tipo
+`"busca::BuscarNoProjeto"`, `"editor::SalvarArquivo"`, etc. — confira lá
+quais ações existem antes de usar.
+
+Isso só funciona se `tecla_de(...)` for chamada DENTRO da função `texto()`
+de cada conteúdo — nunca fora, nunca uma vez só guardada numa variável
+global, porque aí ela vira uma "foto" congelada do atalho de quando o
+programa abriu, e para de acompanhar mudanças. `texto()` inteira só roda
+no momento do clique, então está sempre pegando o valor de agora.
+
+
+───────────────────────────────────────────────────────────────────────────
+8. EXEMPLOS JÁ FUNCIONANDO (ler antes de criar um novo)
+───────────────────────────────────────────────────────────────────────────
+- conteudos/busca.py    → exemplo de conteúdo DINÂMICO (usa tecla_de)
+- conteudos/tarefas.py  → exemplo de conteúdo ESTÁTICO, curto
+- conteudos/filetree.py → exemplo de conteúdo ESTÁTICO, mais longo (vários
+                           blocos com <h4>) — atalhos aqui são tratados no
+                           keyPressEvent da própria árvore, não vêm do
+                           atalhos.json, então não usam tecla_de()
+
+- _APP_/barra_buscas.py                        → botão sem link
+- _TERMINAIS_/Tarefas/tarefas_explorer.py       → botão sem link
+- _PAINEL_ESQUERDO_/FileTree/painel.py         → botão sem link
+
+Nenhum dos dois exemplos acima usa `link=` ainda porque não existe página
+de ajuda no site pra eles. Quando alguma tela precisar (ex: curso), é só
+passar a URL — não precisa mudar nada na estrutura do módulo, o suporte
+já existe (ver seção 3).
+
+
+───────────────────────────────────────────────────────────────────────────
+9. O QUE NÃO FAZER
+───────────────────────────────────────────────────────────────────────────
+✗ Não crie QPushButton/QMessageBox de ajuda direto na tela — sempre passe
+  por `criar_botao_ajuda` (o botão) e deixe `mostrar_ajuda` cuidar do
+  popup — nunca monte outro QMessageBox na mão.
+✗ Não escreva o texto de ajuda dentro do arquivo da própria tela — sempre
+  em `conteudos/<nome>.py`.
+✗ Não hardcode cor de tema ou tecla de atalho dentro de `conteudos/*.py`.
+✗ Não escreva texto longo/corrido no popup — curto, direto, em lista.
+✗ Não chame `conteudo()` você mesmo antes de passar pra
+  `criar_botao_ajuda` — passe a FUNÇÃO (`_ajuda_minha_tela.texto`), sem
+  parênteses. Se chamar antes, o conteúdo fica "congelado" no que era na
+  hora que a tela foi criada, e perde a atualização automática (tanto do
+  atalho quanto de qualquer outra coisa dinâmica).
+✗ Não deixe o botão com cor/fundo fixo, sempre visível — ele tem que
+  começar apagado e só acender no hover, em qualquer tela nova.

@@ -1,0 +1,519 @@
+# PT_git_github.txt
+# hein IDE — Planejamento: Módulo Git/GitHub
+# Criado: 2026-08-06
+# Baseado em: análise de código + revisão de UX da sessão
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 1 — BUGS CORRIGIDOS NA SESSÃO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+## 1.1 COR_FALLBACK não importada em a__git_ui_entrar.py
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/a__git_ui_entrar.py
+
+COMPORTAMENTO ESPERADO:
+  Widget de login renderiza sem erros.
+
+COMPORTAMENTO ATUAL (BUG):
+  NameError ao instanciar GitUIEntrar — COR_FALLBACK usada em _botao()
+  (linhas 51 e 128) mas nunca importada de _CONFIGURA_.
+
+CAUSA RAIZ:
+  a__git_ui_entrar.py:9 — import parcial de _CONFIGURA_ omitia COR_FALLBACK.
+
+ONDE IMPLEMENTAR:
+  a__git_ui_entrar.py — linha 9, adicionar COR_FALLBACK ao import.
+
+STATUS: [✓] CORRIGIDO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.2 _ao_sair() usa QMessageBox em vez de HeinPopup em b__git_ui_conta.py
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/b__git_ui_conta.py
+
+COMPORTAMENTO ESPERADO:
+  Confirmação de saída usa HeinPopup.confirmar() (padrão do projeto).
+
+COMPORTAMENTO ATUAL (BUG):
+  _ao_sair() usava QMessageBox.question() — viola padrão do projeto.
+  _STATUS_GIT_ registrava como corrigido, mas o código não havia sido atualizado.
+
+CAUSA RAIZ:
+  b__git_ui_conta.py:403-412 — QMessageBox.question() no lugar de HeinPopup.
+  HeinPopup não estava nem importado no arquivo.
+
+ONDE IMPLEMENTAR:
+  b__git_ui_conta.py — substituir import + reescrever _ao_sair().
+
+STATUS: [✓] CORRIGIDO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.3 _ao_historico._exibir() não trata versoes is None
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Se historico() lançar exceção, exibe mensagem de erro no terminal.
+  Nenhum crash.
+
+COMPORTAMENTO ATUAL (BUG):
+  _em_thread emite None em caso de exceção. A linha len(versoes) crasha
+  com TypeError se versoes é None.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py — _ao_historico._exibir() linha ~1971, sem guard
+  para None antes de len().
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _ao_historico._exibir(): adicionar
+  `if versoes is None: terminal.erro(...); return`.
+
+STATUS: [✓] CORRIGIDO
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 2 — BUGS PENDENTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+## 2.1 Descrição do repositório coletada mas descartada silenciosamente
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/b__git_ui_conta.py
+
+COMPORTAMENTO ESPERADO:
+  _DialogPublicar coleta nome, descrição e visibilidade.
+  Os três campos são passados ao criar o repositório no GitHub.
+
+COMPORTAMENTO ATUAL (BUG):
+  descricao = dialogo.descricao() é obtida (linha 273) mas nunca passada
+  ao criar_repositorio() (linha 287). O repositório é criado sem descrição,
+  sem aviso ao usuário.
+
+CAUSA RAIZ:
+  b__git_ui_conta.py:287 — criar_repositorio(nome_repo, privado=priv)
+  omite o parâmetro descricao. Depende de GitHubAPI.criar_repositorio()
+  aceitar o campo — verificar assinatura em git_api.py.
+
+ONDE IMPLEMENTAR:
+  1. git_api.py — GitHubAPI.criar_repositorio(): adicionar parâmetro
+     descricao="" e incluí-lo no payload JSON.
+  2. b__git_ui_conta.py:287 — passar descricao=descricao na chamada.
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 2B — BUGS DE LÓGICA — ESTADO DO REPOSITÓRIO REMOTO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+## 2.2 Remote "origin" não é restaurado ao reabrir projeto já publicado
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/git_ui.py  +  git_gerente.py
+
+COMPORTAMENTO ESPERADO:
+  Ao abrir um projeto que já foi publicado no GitHub pela hein IDE,
+  o remote "origin" é verificado. Se estiver ausente mas o projeto
+  constar em projetos_recentes (github_config.json com URL salva),
+  o remote é reconfigurado automaticamente.
+
+COMPORTAMENTO ATUAL (BUG DE LÓGICA):
+  set_projeto() verifica apenas se .git existe (tem_git()).
+  Se yes → vai para Tela 3.
+  O git remote pode estar vazio. Ninguém verifica.
+  Push falha com "origin does not appear to be a git repository".
+  O usuário não tem como saber o que aconteceu nem como resolver.
+
+CAUSA RAIZ:
+  git_ui.py:set_projeto() — chama git.tem_git() e vai direto para
+  _tela_projeto.abrir_projeto(caminho). Nunca consulta
+  config_github().projetos_recentes para restaurar o remote.
+  git_gerente.py:definir_remoto() existe e funciona, mas não é chamado
+  nesse fluxo.
+
+ONDE IMPLEMENTAR:
+  git_ui.py — set_projeto() e _ir_para_projeto():
+    Após confirmar que tem .git, verificar git remote -v.
+    Se vazio, buscar caminho em config_github().projetos_recentes.
+    Se encontrar URL salva → chamar git.definir_remoto() em thread
+    e exibir no terminal: "Repositório reconectado ao GitHub."
+    Se não encontrar → exibir estado "sem repositório remoto" (ver 3.6).
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.3 Nome da conta logada não aparece na Tela 3 (projeto aberto)
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  O cabeçalho da Tela 3 mostra quem está logado:
+    "GITHUB  @Eliandro  │  hein-ide ▾"
+  Assim o usuário sabe que a sessão está ativa sem precisar navegar
+  para outra tela.
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  _lbl_projeto exibe só o nome da pasta local.
+  config_github().login existe e tem o dado, mas não é exibido na Tela 3.
+  O usuário não tem confirmação visual de que está autenticado.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py:_construir_ui() — cabeçalho contém apenas
+  "GITHUB" (label fixo) + _lbl_projeto (nome do projeto).
+  Nenhum widget exibe config_github().login ou .nome.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _construir_ui():
+    Adicionar _lbl_usuario = QLabel() ao cabeçalho (entre "GITHUB" e o nome do projeto).
+  abrir_projeto():
+    _lbl_usuario.setText(f"@{config_github().login}")
+    Cor verde suave (mesmo padrão da Tela 2).
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.4 Sem forma visível de vincular projeto a um repositório GitHub existente
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Na seção GITHUB da aba Git (ver 3.2), quando não há remote configurado,
+  o usuário vê claramente duas opções:
+    [ Criar repositório no GitHub ]   → _acao_criar_repo()
+    [ Vincular repositório existente ] → _acao_trocar_repo() com label explicativo
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  A única forma de vincular/trocar é pelo menu dropdown do nome do projeto
+  → "Trocar repositório" — escondido, sem destaque, sem explicação.
+  Para um novato é completamente invisível.
+  Quando o remote está ausente e o usuário tenta "Enviar pro GitHub",
+  recebe erro técnico sem alternativa clara na UI.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py — não existe nenhum widget de acesso rápido
+  a _acao_trocar_repo() ou _acao_criar_repo() fora do menu dropdown.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — seção GITHUB do layout (ver 3.2):
+    _btn_conectar = botão "Vincular ao GitHub" visível APENAS quando
+    _verificar_remoto() retorna False.
+    clicked → abre sub-menu com "Criar repositório" / "Vincular existente".
+    _atualizar_estado_remoto() controla visibilidade:
+      remoto presente  → _btn_conectar oculto, _btn_enviar habilitado
+      remoto ausente   → _btn_conectar visível, _btn_enviar desabilitado
+                         com tooltip "Vincule um repositório GitHub primeiro."
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 3 — UX / LÓGICA — SEPARAÇÃO GIT vs GITHUB
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# CONTEXTO:
+# A hein IDE é destinada a usuários novatos. Git (local) e GitHub (remoto)
+# são conceitos distintos e precisam ser visualmente separados e nomeados
+# de forma que o usuário entenda o que cada ação faz sem precisar conhecer
+# os termos técnicos do Git.
+#
+# LAYOUT ATUAL (aba Git no terminal central):
+#   [ Salvar ] [ Enviar ] [ Baixar ] [ Histórico ]
+#   Abas: Status | Diferenças | Ramificações | Guardados | Arquivo
+#
+# PROBLEMAS: botões sem contexto, sem tooltip, GitHub e Git misturados,
+# histórico abre aba separada, falha sem ação de recuperação,
+# estado de conexão opaco.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+## 3.1 Botões sem contexto: não informam onde a ação ocorre
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Botões identificam claramente o destino da ação:
+    "Salvar no Git"     → commit local
+    "Enviar pro GitHub" → git push
+    "Atualizar do GitHub" → git pull  (ver 3.3)
+    "Histórico"         → mantém nome
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  Botões exibem apenas "Salvar", "Enviar", "Baixar", "Histórico".
+  Um novato não sabe que "Salvar" é um commit local nem que "Enviar"
+  manda pro GitHub. Não há tooltips em nenhum deles.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py:1470-1484 — textos definidos sem contexto.
+  Nenhum setToolTip() nos botões.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _construir_ui():
+    _btn_salvar.setText("  Salvar no Git")
+    _btn_salvar.setToolTip(
+        "Salva um ponto de restauração local do projeto.\n"
+        "Não envia nada para a internet."
+    )
+    _btn_enviar.setText("  Enviar pro GitHub")
+    _btn_enviar.setToolTip(
+        "Envia as versões salvas localmente para o GitHub.\n"
+        "Requer conexão com a internet."
+    )
+    _btn_historico.setToolTip(
+        "Mostra todas as versões salvas e permite restaurar uma anterior."
+    )
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.2 Separação visual Git local vs GitHub no cabeçalho da aba
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  A aba Git no terminal central exibe dois blocos visuais distintos:
+
+  ┌─ GIT LOCAL ──────────────────────────────────────┐
+  │  [ Salvar no Git ]  [ Histórico ]                │
+  │  Abas: Status | Diferenças | Ramificações |      │
+  │         Guardados | Arquivo                       │
+  └──────────────────────────────────────────────────┘
+  ┌─ GITHUB ─────────────────────────────────────────┐
+  │  [ Enviar pro GitHub ]  [ Atualizar do GitHub ]  │
+  │  Estado: ✓ Conectado / ✗ Sem repositório remoto  │
+  └──────────────────────────────────────────────────┘
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  Todos os botões e abas estão no mesmo nível visual, sem separação.
+  O usuário não distingue o que é local e o que vai para a internet.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py — _construir_ui() monta os botões em sequência
+  plana, sem agrupamento semântico.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _construir_ui():
+  Reorganizar o layout da aba Git em dois grupos com cabeçalho QLabel:
+    Grupo 1 — "GIT LOCAL": _btn_salvar + _btn_historico + QTabWidget
+    Grupo 2 — "GITHUB":    _btn_enviar + _btn_atualizar + label de estado
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.3 Botão "Baixar" com nome e propósito opacos
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Botão renomeado para "Atualizar do GitHub" com tooltip explicativo.
+  Posicionado na seção GITHUB (ver 3.2), não misturado com ações locais.
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  Botão chama-se "Baixar" — não indica que é git pull nem que traz
+  atualizações do GitHub. Para uso solo o usuário nunca entende pra que serve.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py:1478 — _btn_atualizar.setText("  Baixar").
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _construir_ui():
+    _btn_atualizar.setText("  Atualizar do GitHub")
+    _btn_atualizar.setToolTip(
+        "Baixa atualizações do GitHub para o seu computador.\n"
+        "Use quando outra pessoa enviou mudanças pro mesmo projeto."
+    )
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.4 Histórico abre aba separada no terminal central em vez de mostrar inline
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Ao clicar "Histórico", a lista de versões é exibida diretamente dentro
+  da aba Git já aberta, sem abrir nova aba no terminal central.
+  Ex: o QTabWidget da aba Git ganha uma sub-aba "Histórico" ou substitui
+  o painel ativo por _PainelHistoricoVersoes temporariamente.
+
+COMPORTAMENTO ATUAL (BUG DE LÓGICA):
+  _ao_historico() emite abrir_historico_terminal(painel) → main_window
+  abre _PainelHistoricoVersoes como nova aba no terminal central.
+  O usuário sai visualmente da aba Git sem entender o que aconteceu.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py:1378 — Signal abrir_historico_terminal = Signal(object)
+  main_window conecta esse sinal e abre nova aba no terminal central.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — adicionar _PainelHistoricoVersoes como sub-aba
+  do QTabWidget interno (índice 5, após "Arquivo"), ou usar QStackedWidget
+  para alternar entre abas e painel de histórico sem sair da aba Git.
+  Remover Signal abrir_historico_terminal e sua conexão no main_window.
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.5 Falha no push sem feedback acionável e sem botão de reconexão
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  Quando o push falha por ausência de remoto ou erro de autenticação:
+    1. Terminal exibe mensagem em linguagem simples (ex: "Repositório não
+       conectado ao GitHub. Configure um repositório antes de enviar.")
+    2. Um botão "Conectar ao GitHub" aparece na seção GITHUB (ou fica
+       sempre visível quando remoto está ausente).
+    3. Clicar nele abre o diálogo de configuração de repositório
+       (_acao_trocar_repo ou _acao_criar_repo).
+
+COMPORTAMENTO ATUAL (AUSENTE):
+  Falha de push exibe apenas a mensagem de erro técnica do git no terminal.
+  Nenhuma ação de recuperação é oferecida na UI.
+  O botão _btn_enviar continua visível e habilitado, induzindo o usuário
+  a clicar de novo no mesmo botão que falhou.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py — _ao_enviar._concluido(): trata apenas r.ok/r.erro,
+  sem detectar causa específica da falha nem oferecer recuperação.
+  Não há verificação de remoto antes de habilitar _btn_enviar.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py:
+    1. _ao_enviar._concluido(): detectar ausência de remoto no r.erro
+       e exibir mensagem em português simples + log.aviso().
+    2. Seção GITHUB do layout (ver 3.2): adicionar _lbl_estado_remoto
+       e _btn_conectar (visível quando _verificar_remoto() retorna False).
+    3. abrir_projeto() e _ao_enviar._concluido(): chamar
+       _atualizar_estado_remoto() que atualiza visibilidade dos dois widgets.
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.6 Nome do projeto exibido mesmo sem remoto — estado de conexão opaco
+
+ARQUIVO: _PAINEL_ESQUERDO_/Git/c__git_ui_projeto.py
+
+COMPORTAMENTO ESPERADO:
+  O cabeçalho da tela 3 indica claramente se o projeto está ou não
+  conectado ao GitHub:
+    ✓ Conectado → "hein-ide ▾"  (verde, como hoje)
+    ✗ Sem remoto → "hein-ide ▾  ✗ sem GitHub"  (texto em amarelo/laranja)
+
+COMPORTAMENTO ATUAL (BUG DE LÓGICA):
+  _lbl_projeto exibe apenas os.path.basename(caminho) — nome local.
+  _verificar_remoto() é chamado mas o resultado só vai para o terminal,
+  não afeta nenhum elemento visual do cabeçalho.
+  O usuário vê o nome do projeto e assume que está conectado.
+
+CAUSA RAIZ:
+  c__git_ui_projeto.py — abrir_projeto() linha ~1519:
+    tem_remoto = self._verificar_remoto()
+    if tem_remoto: terminal.ok(...)
+    else:          terminal.info(...)
+  Nenhum widget visual é alterado.
+
+ONDE IMPLEMENTAR:
+  c__git_ui_projeto.py — _construir_ui(): adicionar _lbl_estado_remoto
+  ao cabeçalho (inline com _lbl_projeto).
+  abrir_projeto() e _ao_enviar._concluido(): chamar
+  _atualizar_estado_remoto() → atualiza texto e cor de _lbl_estado_remoto
+  e visibilidade de _btn_conectar (ver 3.5).
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMPLEMENTAÇÕES — FILA DE TRABALHO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+Legenda: [ ] pendente   [✓] feito   [~] em andamento
+
+─── BUGS CORRIGIDOS ───────────────────────────────────────────────────────────
+
+  [✓] IMP-01  COR_FALLBACK não importada → a__git_ui_entrar.py:9
+  [✓] IMP-02  QMessageBox em vez de HeinPopup → b__git_ui_conta._ao_sair()
+  [✓] IMP-03  versoes is None não tratado → c__git_ui_projeto._ao_historico()
+
+─── BUGS PENDENTES ────────────────────────────────────────────────────────────
+
+  [ ] IMP-04  Descrição do repo descartada → git_api.py + b__git_ui_conta:287
+              (verificar assinatura de GitHubAPI.criar_repositorio primeiro)
+
+─── BUGS DE LÓGICA — ESTADO DO REPOSITÓRIO REMOTO ────────────────────────────
+
+  [ ] IMP-12  Remote "origin" ausente não é restaurado ao reabrir projeto
+              → git_ui.py:set_projeto() + _ir_para_projeto()
+              Verificar remote; se vazio, buscar URL em projetos_recentes
+              e chamar git.definir_remoto() em thread.
+              DEPENDE DE: IMP-09 (_atualizar_estado_remoto já existir)
+
+  [ ] IMP-13  Nome da conta logada não aparece na Tela 3
+              → c__git_ui_projeto._construir_ui(): adicionar _lbl_usuario
+              → abrir_projeto(): popular com config_github().login
+
+  [ ] IMP-14  Sem forma visível de vincular projeto a repositório GitHub
+              → c__git_ui_projeto: _btn_conectar na seção GITHUB
+              Visível só quando remote ausente; oculto quando presente.
+              DEPENDE DE: IMP-08 (layout reorganizado) + IMP-09
+
+─── UX / SEPARAÇÃO GIT vs GITHUB ─────────────────────────────────────────────
+
+  [✓] IMP-05  Renomear botões com contexto → c__git_ui_projeto._construir_ui()
+              "Salvar versão" → "Salvar no Git"
+              "Enviar"        → "Enviar pro GitHub"
+              "Baixar"        → "Atualizar do GitHub"
+
+  [✓] IMP-06  Tooltips em todos os botões → c__git_ui_projeto._construir_ui()
+
+  [✓] IMP-07  (fundido com IMP-05)
+
+  [✓] IMP-08  Layout lado a lado GIT LOCAL | GITHUB no terminal
+              → c__git_ui_projeto.montar_painel_terminal() — novo método
+              QSplitter horizontal, proporção 68/32 ajustável pelo usuário
+              ATENÇÃO: base.py precisa chamar tela_projeto.montar_painel_terminal()
+              para montar a aba Git em vez de construir o layout manualmente.
+
+  [✓] IMP-09  Usuário logado + estado de conexão no pequenininho esquerdo
+              → c__git_ui_projeto._construir_ui(): _lbl_usuario, _lbl_estado_conexao
+              → c__git_ui_projeto._atualizar_estado_remoto(): novo método
+              → abrir_projeto() chama _atualizar_estado_remoto() ao abrir
+
+  [✓] IMP-10  Botão "Reconectar" → aparece no pequenininho E no lado GitHub
+              quando remote está ausente; oculto quando conectado.
+              Chama _acao_trocar_repo() (já existia).
+              _btn_enviar desabilitado automaticamente sem remote.
+
+  [ ] IMP-11  Histórico inline — exibir dentro da aba Git em vez de nova aba
+              → c__git_ui_projeto: mover _PainelHistoricoVersoes para sub-aba interna
+              → remover Signal abrir_historico_terminal
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# REGRAS GERAIS DE IMPLEMENTAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- Mostrar ANTES e DEPOIS — nunca o arquivo inteiro.
+- Menor alteração possível — nunca tocar no que funciona.
+- Todo processamento pesado em QThread — nunca na UI thread.
+- Sem bibliotecas externas — PySide6 + stdlib Python.
+- Nunca confundir as três venvs (IDE / usuário / _venv_hein_).
+- Em caso de dúvida: perguntar antes de alterar.
+- Nunca criar _DOC_SESSAO_ de nenhum tipo.
+- Após cada IMP implementada: informar quais arquivos copiar e como testar.
+  Aguardar confirmação antes de avançar para a próxima.

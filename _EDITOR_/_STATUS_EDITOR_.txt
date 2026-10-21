@@ -1,0 +1,484 @@
+# 📁 _EDITOR_/_STATUS_EDITOR_.txt
+
+════════════════════════════════════════════════════════════════════════════════
+  MÓDULO: _EDITOR_
+  Documento: _STATUS_EDITOR_.txt
+  Gerado em: 2026-06-16 · Última atualização: 2026-07-31 (Sessão 42: Corretor ortográfico manual + PopupBase)
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. IMPLEMENTADO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  [Editor principal]
+  ✅ CodeEditor (QPlainTextEdit) com todos os subcomponentes instanciados
+  ✅ Abertura e salvamento de arquivo com detecção de encoding (GerenciadorArquivo)
+  ✅ Restauração de estado por arquivo (EstadoEditor): cursor, scroll, bookmarks, BPs
+  ✅ Aplicação de tema via tema_global() em todos os componentes
+  ✅ API ir_para_linha(), conectar_outline(), conectar_barra_status()
+  ✅ Linting assíncrono via _ThreadLint (pyflakes/flake8) com debounce
+  ✅ _ThreadInstalador(QThread) — pip install em background sem bloquear a UI;
+     usa subprocess.Popen com leitura linha a linha; emite progresso(str) em
+     tempo real para a status bar da MainWindow; emite concluido(bool, str) ao terminar
+  ✅ _instalar_modulo() — mostra mensagem na status bar antes de iniciar; saída
+     do pip atualiza a status bar linha a linha; clearMessage() ao concluir;
+     resultado exibido via QMessageBox (sucesso ou falha); não bloqueia a UI
+  ✅ Botão "Instalar via pip" no menu de contexto: exibido somente quando
+     self._erros_imports.get(linha) == "error" — sem falsos positivos para
+     módulos locais do projeto que o ValidadorImports já reconhece
+
+  [Edição avançada]
+  ✅ Recuo/desrecuo de blocos selecionados (Tab / Shift+Tab)
+  ✅ Comentar/descomentar linhas (Ctrl+/)
+  ✅ Duplicar linha (Ctrl+D)
+  ✅ Mover linha acima/abaixo (Alt+↑ / Alt+↓)
+  ✅ Auto-fechamento de pares: (, [, {, ', "
+  ✅ Dobramento de blocos: ▼▶ clicáveis na calha, Ctrl+[ / Ctrl+]
+  ✅ Auto-indentação inteligente no Enter (com aumento pós ":" e redução pós return/pass)
+
+  [Autocomplete]
+  ✅ Popup de sugestões via Jedi em processo filho (WorkerSubprocess)
+  ✅ Isolamento de falhas do Jedi sem travar a UI
+  ✅ Navegação no popup com ↑↓, inserção com Tab/Enter, cancelamento com Esc
+  ✅ autocomplete_worker.py: erro de ImportError do Jedi agora emite JSON
+     {"error":"jedi_not_found"} via stdout — pai distingue erro real de timeout
+  ✅ autocomplete.py: _PYTHON_hein usa cascata de 3 estratégias no modo frozen:
+     1) python.exe ao lado do .exe  2) shutil.which("python"/"python3")  3) sys.executable
+  ✅ autocomplete.py: _palavras_do_buffer() e _fontes_appdata_filtradas() usam
+     .lower().startswith(prefixo.lower()) — sugestões de palavras.txt não eram
+     mais case-sensitive; palavras com capitalização diferente do prefixo digitado
+     agora aparecem no popup
+  ✅ Esc fecha popup de sugestões E tooltip de assinatura (antes só fechava
+     o popup quando a lista estava visível)
+  ✅ Apenas Tab confirma sugestão da lista — Enter fica livre para o fluxo
+     normal de quebra de linha do editor
+  ✅ Navegação na lista com wrap-around (seta ↑ no primeiro item vai pro
+     último e vice-versa)
+  ✅ Snippets com tabstops: $1, $2, ${N:texto}, $0 — Tab/Shift+Tab navega
+     entre os pontos de parada; $0 sempre visitado por último
+  ✅ Jedi restrito a linguagens que declaram autocomplete='jedi' no
+     Mult_Linguas (hoje só Python) — demais linguagens usam snippets/
+     word-completer/fontes AppData/path completer sem tentar consultar Jedi
+  ✅ _fuzzy_score(): fontes do AppData (palavras/símbolos/emojis) e o
+     gatilho ':' de emoji/símbolo usam fuzzy matching estilo VS Code em vez
+     de startswith — letras do prefixo bastam aparecer na mesma ordem no
+     alvo (ex: "fgo" bate em "fogo"); resultados ordenados por qualidade
+     (menos saltos, match mais cedo, alvo mais curto — startswith continua
+     sempre no topo). Fuzzy vale só para as fontes do editor; o terminal
+     mantém startswith de propósito.
+  ✅ _CONFIGURA_/gerenciador_autocomplete.py: novo _watcher_appdata
+     (QFileSystemWatcher) monitora %APPDATA%/hein/autocompletar/ e invalida
+     o _CACHE_FONTES deste módulo automaticamente quando o usuário edita
+     palavras.txt/simbolos.json/emojis.json fora da IDE (ver _STATUS_CONFIGURA_.txt)
+
+  [PopupQuickFix — import/instalar módulo]
+  ✅ Ativação exclusivamente por clique do mouse nos botões Importar/Instalar
+     — Enter, ↑/↓ e Ctrl+. nunca ativam o popup (decisão intencional: um Enter
+     digitado no meio de outra ação já disparou pip install indevido no passado)
+  ✅ Esc fecha o popup explicitamente (editor_acoes.py chama fechar() no
+     Key_Escape) além do fechamento automático abaixo
+  ✅ Fechamento automático por perda de foco: QApplication.focusChanged
+     (foco sai do editor/popup) e QApplication.applicationStateChanged
+     (app perde foco pro SO) — antes o popup podia ficar flutuando por cima
+     de qualquer janela do sistema indefinidamente. Mesmo padrão aplicado à
+     lista de sugestões e ao tooltip de assinatura do autocomplete
+     (GerenciadorAutocomplete, autocomplete.py)
+  ✅ Gatilho automático por teclado (_checar_quick_fix_por_cursor, Editor.py)
+     só considera um erro "pronto" para popup se fizeram ~1.2s desde a
+     última edição de texto NAQUELA linha — evita abrir o popup em cima de
+     um identificador ainda incompleto (ex.: "pr" no meio de digitar "print(")
+  ✅ _ToastInstalando: aviso flutuante com spinner exibido durante o
+     pip install, com botão "✕ Cancelar" que mata o QProcess em andamento
+     sem gerar popup de erro (instalação cancelada é tratada como caminho
+     normal, não como falha)
+
+  [Indexador]
+  ✅ Varredura de projeto com os.walk() e indexação AST em SQLite
+  ✅ Detecção de mudanças por MD5 — sem reindexação desnecessária
+  ✅ Banco SQLite em WAL mode com row_factory = sqlite3.Row
+  ✅ Tabelas: files, symbols, usages, imports — schema completo
+  ✅ Todas as queries centralizadas em Consultas: definição, referências,
+     prefixo, symbols por arquivo, imports, usages, resumo
+
+  [CodeLens]
+  ✅ Overlay "_CodeLensOverlay" desenhado sobre o viewport com QPainter
+  ✅ Contagem de usos ("N usos") por função/classe derivada do banco SQLite
+  ✅ Clique no CodeLens → abre FindReferences para o símbolo clicado
+  ✅ Indent guides: overlay ignora linhas vazias/só-whitespace;
+     contagem de colunas suporta espaço E tab; offset_x calculado fora do
+     loop de blocos (sem recalcular a cada linha)
+
+  [Busca e substituição]
+  ✅ PainelBuscaSubstituicao flutuante (Ctrl+F / Ctrl+H)
+  ✅ Busca literal e regex com opção case-sensitive
+  ✅ Navegação entre resultados (F3 / Shift+F3 / ▲▼)
+  ✅ Destaque de todas as ocorrências com ExtraSelections; resultado ativo
+     em laranja, demais em azul; underlines de lint preservados ao buscar/limpar
+  ✅ Substituição simples (atual) e substituição total (tudo)
+  ✅ Reposicionamento automático no canto superior direito sem cobrir outline
+
+  [Busca no projeto]
+  ✅ Ctrl+Shift+F seleciona todas as ocorrências da palavra sob o cursor (multi-cursor)
+  ✅ Resultados da busca global (BarraCentral) exibidos no PainelOutline em modo BUSCA
+  ✅ Resultados agrupados por arquivo com contador; clique navega para arquivo:linha
+  ✅ Esc na BarraCentral volta o PainelOutline ao modo outline normal
+
+  [Find References]
+  ✅ Shift+F12 / Ctrl+F12 → busca referências da palavra sob o cursor
+  ✅ Busca via banco SQLite (usages com tipo "call")
+  ✅ Filtro de resultados: só referências que contêm nome( ou nome (
+  ✅ Painel flutuante no canto inferior esquerdo do editor
+  ✅ Auto-close: painel fecha após 30 s (QTimer) ou clique fora do
+     painel (eventFilter no viewport — geometry.contains(pos) decide)
+
+  [Ir para definição]
+  ✅ F12 → ir para definição com cascata de 4 estratégias + fallback regex
+  ✅ Ctrl+Click com destaque hover (sublinhado azul) ao segurar Ctrl
+  ✅ Import-following: from X import nome → abre X.py na definição de nome
+  ✅ Histórico de navegação com Alt+← (por arquivo + posição)
+  ✅ Detecção e feedback especial para built-ins Python
+  ✅ BUG-01: _limpar_destaque_hover usa markContentsDirty (invalida pintura)
+     em vez de setForeground (não limpava o sublinhado hover visualmente)
+  ✅ BUG-02: cache_navegavel como dict {palavra: bool}; _invalidar_cache
+     conectado ao sinal arquivo_salvo — cache resetado a cada salvamento
+  ✅ BUG-05: cores do hover e destaque de linha via tema_global().cor() em
+     _aplicar_destaque_hover e _destacar_linha_em — sem hardcode de hex
+  ✅ BUG-06: indexOf() com fallback (0) em _abrir_em_outro_arquivo — sem crash
+     ao abrir definição em outra aba quando o arquivo não estava nas abas
+
+  [Múltiplos cursores]
+  ✅ Alt+Click ou Ctrl+Alt+Click adiciona cursor na posição clicada
+  ✅ Ctrl+Alt+↑ / Ctrl+Alt+↓ adiciona cursor na linha acima/abaixo mantendo a coluna
+  ✅ Edições simultâneas em todos os cursores (texto, backspace, delete, enter, tab)
+  ✅ Agrupamento em bloco desfazível (beginEditBlock/endEditBlock)
+  ✅ Esc cancela todos os cursores extras
+
+  [Realce de sintaxe]
+  ✅ Python: palavras-chave, built-ins, def/class, decoradores, números,
+     strings (simples, f-strings, multilinhas com estado de bloco), comentários,
+     self/cls, atributos, operadores, pontuação diferenciada por tipo
+  ✅ JSON: chaves, valores string, números, booleanos/null, pontuação
+  ✅ Cores lidas do dicionário de tema via aplicar_tema() — sem hardcode
+  ✅ Tags de Comentário hein (Python): #cod: pinta fundo ("título") e fica
+     ativo; #cod; pinta só a fonte e também fica ativo; #: herda o TIPO
+     (fundo ou fonte) e a cor de quem estiver mais próximo acima — 12 cores
+     fixas (_PALETA_TAGS_COMENTARIO), independente do tema
+  ✅ Minimizar código da tag: #al:/#al;/#: aparecem discretos (fonte pequena/
+     apagada) por padrão; voltam ao tamanho normal na linha do cursor ou
+     dentro de uma seleção (cursorPositionChanged/selectionChanged no
+     CodeEditor → definir_linha_cursor_tag()/definir_selecao_tag())
+  ✅ Color preview / swatch: literais hex #RRGGBB/#RGB no código Python
+     ganham fundo com a própria cor e fonte preta/branca por contraste
+
+  [Corretor ortográfico — popup_base.py + corretor_ortografico.py]
+  ✅ popup_base.py (NOVO) — PopupBase(QFrame): base unificada para todos os popups
+     flutuantes; flags Qt.ToolTip | FramelessWindowHint | WA_ShowWithoutActivating;
+     cores do tema via _cor_*(); debounce de fechamento (timer opcional);
+     fechamento por perda de foco (opcional); guard de thread em _posicionar_e_exibir();
+     enterEvent/leaveEvent: mouse entrando no popup cancela o timer de fechamento
+  ✅ corretor_ortografico.py REESCRITO — modo 100 % manual:
+     · Modo 1 (menu de contexto → "Corretor ortográfico"): varre página inteira em
+       background (_RunnableCorretor/QThreadPool), sublinha erros em cinza (#808080);
+       hover sobre palavra sublinhada → popup de sugestões
+     · Modo 2 (clique do meio / scroll): verifica palavra sob o cursor
+       imediatamente (sem thread); popup só se palavra errada
+     · Sem varredura automática — textChanged não conectado, sem timer de debounce
+     · _PopupSugestoes herda PopupBase(debounce_ms=200)
+  ✅ quick_fix.py — _ToastInstalando e PopupQuickFix migrados para PopupBase;
+     duplicação de flags, timer e fechamento por foco removida
+  ✅ Editor/__init__.py — item "Corretor ortográfico" (mdi.spellcheck) adicionado
+     ao menu de contexto; chama self._corretor.verificar_pagina_inteira()
+
+  [Validação de imports]
+  ✅ Detecção de módulos inexistentes (error) e nomes não exportados (warning)
+  ✅ Thread background — nunca bloqueia a UI
+  ✅ Verifica: stdlib, .venv/site-packages e arquivos .py do projeto
+  ✅ Fallback regex quando há SyntaxError no arquivo
+  ✅ Hash do conteúdo evita re-lançamento desnecessário
+  ✅ Emite erros_detectados → ReguaErros + calha
+  ✅ Disparada automaticamente ao abrir arquivo .py (QTimer.singleShot 900ms em load_file)
+  ✅ Sublinhados wave e indicadores da ReguaErros coexistem com o lint —
+     _aplicar_resultados_lint não sobrescreve ExtraSelections do ValidadorImports
+
+  [Outline]
+  ✅ Árvore de símbolos Python (ast.parse em thread background)
+  ✅ Grupo "imports (N)" no topo da árvore (colapsado por padrão) com todos
+     os import/from X import Y do arquivo como itens filhos clicáveis
+  ✅ Fallback regex quando há SyntaxError (mantém outline visível)
+  ✅ Suporte a JSON, XML/HTML e YAML
+  ✅ Modo OUTLINE (padrão), modo TAREFAS, modo BUSCA (resultados da BarraCentral)
+  ✅ Modo busca global no projeto (_WorkerBusca em QThread com moveToThread)
+  ✅ Modo Tarefas (busca por "LEMBRAR:" em arquivos .py)
+  ✅ Modo Busca: recebe resultados do MotorBusca via mostrar_busca_motor() /
+     adicionar_grep_motor(); agrupados por arquivo; guards impedem que o
+     timer do outline limpe os resultados enquanto modo BUSCA está ativo
+  ✅ Delegate com render colorido por token (class/def com argumentos)
+  ✅ Tema dinâmico via tema_global() com fallback em cascata
+
+  [Interface da calha]
+  ✅ AreaNumerosLinha com zonas: BP/BM, números, setas fold, barra git
+  ✅ _HandleOutline: divisor redimensionável (4px) entre viewport e PainelOutline;
+     drag horizontal altera largura do outline; guard hasattr em
+     _atualizar_geometria_outline() previne crash no resizeEvent inicial
+  ✅ Breakpoints: bolinha sólida no clique; ghost semi-transparente ao hover;
+     cor lida de editor.erro do tema (sem hardcode)
+  ✅ Setas de dobramento sempre visíveis (dim=normal, bright=hover/recolhida);
+     alinhamento vertical correto mesmo com StickyScroll ativo (offset h_sticky)
+  ✅ toggle_dobramento() preserva posição de scroll via QTimer.singleShot(0) —
+     clicar na seta ▼▶ não move o viewport; pula linhas em branco ao checar
+     estado do bloco (bloco.next() pode ser linha vazia, que nunca está em
+     _blocos_recolhidos — sem o skip, toggle nunca expandia)
+  ✅ Bookmarks (◆ azul) com Ctrl+F2, F2 (próximo), Shift+F2 (anterior)
+  ✅ Indicadores git: added (verde), modified (amarelo), deleted (vermelho)
+  ✅ ReguaErros: mapa proporcional com git, busca, BPs, erros, cursor;
+     _linha_em_y() usa math.ceil (inversa correta do int/floor do paintEvent)
+     e snap para o marcador de erro/busca mais próximo (tolerância ±5 linhas);
+     largura lida de configurar.json ("gutter"."largura_erro") via
+     _largura_erro_config() — fallback LARGURA_ERRO de __init__.py
+  ✅ MetricasEditor: largura dinâmica da calha via area_numeros.larg_*
+     (não mais constantes hardcoded — lê do configurar.json em runtime)
+  ✅ StickyScroll: contexto de escopo no topo com até 3 níveis; clicável;
+     clique navega para a linha centralizada no viewport (revealLineInCenter) —
+     atualiza automaticamente via cursorPositionChanged sem esconder/mostrar;
+     borda inferior via interface.borda do tema; largura limitada ao início
+     do PainelOutline (não cobre o outline)
+  ✅ ir_para_linha() centraliza a linha no viewport (revealLineInCenter, como
+     VSCode/Zed) — usa unidades de linha do verticalScrollBar, não pixels;
+     Outline, StickyScroll, busca e ReguaErros navegam todos para a linha correta
+  ✅ Gutter configurável via configurar.json (seção "gutter"):
+     AreaNumerosLinha._recarregar_gutter() lê ao __init__ e armazena como
+     self.larg_guiter/pad_esq/seta/git/pad_dir/erro/colunas; todo paintEvent
+     e eventos de mouse usam self.larg_* (não mais constantes de módulo);
+     fallback automático para constantes de __init__.py se chave ausente
+  ✅ ValidadorImports: IndexError corrigido (cursor clamped ao total de blocos)
+  ✅ Outline/_campo_sub: tecla Enter aciona substituir() via eventFilter
+     (sem precisar clicar no botão com o mouse)
+  ✅ OUTLINE_LARGURA_MAX aumentado para 900 (antes limitava o outline)
+  ✅ Outline barra inferior (_construir_barra_atalhos) reformulada: 24 px,
+     layout stretch → [Classe] | [Função] | [Erros: N] | [⌨] [?] — direita
+  ✅ _nome_item_outline(item): extrai nome limpo sem prefixo def/class/@
+  ✅ _atualizar_barra_outline(item): atualiza labels de contexto e erros;
+     chamado em _sincronizar_cursor e conectar_editor
+  ✅ tipo dos itens corrigido para português: "classe" (não "class")
+  ✅ _popup_atalhos criado dentro de _construir_barra_atalhos —
+     _toggle_popup_atalhos não crasha mais (AttributeError corrigido)
+
+  [Mult_Linguas/ — sistema de providers de linguagem]
+  ✅ LanguageProvider (Base/provider.py) — contrato completo:
+     extensions, name, outline_mode, lint, autocomplete, can_run,
+     run_extensoes, status_rotulo_a/b, mostrar_erros, rotulo_erros,
+     create_highlighter(), folding_fn(), provide_outline()
+  ✅ _RealceInerte (Base/provider.py) — highlighter noop (padrão da base)
+  ✅ LanguageManager (__init__.py) — registro central {'.ext': provider}
+  ✅ _descobrir() — auto-descoberta via importlib + duck-typing (hasattr);
+     nunca usa isinstance() (falsa identidade por dois caminhos de import)
+  ✅ get_provider(ext) — aceita .ext, ext ou caminho; fallback PythonProvider
+  ✅ register(provider) / is_registered(ext)
+  ✅ 15 providers: Python, JSON, HTML, XML, YAML, Markdown, JavaScript,
+     Shell, SQL, C_CPP, Makefile, Lua, Dockerfile, Texto, Hein
+  ✅ Shims em Funcionalidades/ re-exportam de Mult_Linguas/ — zero
+     breaking change para módulos externos
+  ✅ 13 métodos delegadores no PainelOutline + despacho por outline_mode
+  ✅ _ThreadLint migrado de Editor.py → Python/lint.py
+  ✅ ValidadorImports migrado de Funcionalidades/ → Python/validador.py
+  ✅ Realce Python/JSON/HTML migrado → subpastas
+
+  [Mult_Linguas/Hein/ — editor de anotações .hein]
+  ✅ HeinProvider: .hein — outline_mode='tree_hein', can_run=False
+     tem_barra_formatacao=True, estilo_visual='caderno'
+     status_rotulo_a='Seção', mostrar_erros=False
+     folding_fn: linhas iniciando com # (título/subtítulo)
+  ✅ RealceSintaxeHein (realce.py) — "marcador invisível + conteúdo formatado":
+     # Título (base+5pt negrito), ## Subtítulo (base+1.5pt), ### Tópico (base+0.5pt)
+     **negrito**, *itálico*, !! destaque, !!r/g/b variantes coloridas
+     [[link]], - lista, [ ] pendente, [x] feita (tachado), {oculto}, ``` bloco
+     set_zoom(n): tamanhos relativos ao zoom; marcador: cor=fundo + tam=1pt
+  ✅ analisar_hein() (outline.py) — árvore 2 níveis; subtítulos sem pai viram raiz
+  ✅ Integração painel_outline.py: _analisar_hein(), barra de formatação
+     com 7 botões (Título, Subtítulo, Lista, Checklist, Destaque, Negrito, Link)
+  ✅ Hein/_DOC_HEIN.txt — documentação completa do provider
+
+  [Barra de status]
+  ✅ Ln/Col em tempo real (cursorPositionChanged)
+  ✅ Detecção de encoding com BOM (UTF-8 BOM, UTF-16 LE/BE, UTF-32 LE/BE)
+  ✅ Tipo de arquivo por extensão (30+ tipos mapeados)
+  ✅ Tamanho via characterCount() O(1) — sem alocar texto inteiro
+  ✅ Seleção: N chars / N linhas
+  ✅ Modo de indentação: Tabs vs Espaços:4 (detectado por contagem de linhas)
+  ✅ BarraOutline extraída para barra_status.py — barra inferior do outline
+     usa agora a classe BarraOutline (mesmo fundo editor.busca_match_ativo,
+     altura 22px, WA_StyledBackground); _construir_barra_atalhos em
+     painel_outline.py virou só cola (importa BarraOutline, conecta sinais)
+  ✅ Cores fixas nos contadores do outline: ⊗ sempre vermelho (#f48771),
+     △ sempre amarelo (#e5c07b) — sem mudar de cor por contagem
+  ✅ Botão ⎇ Diff na BarraStatus: abre painel flutuante (Qt.Tool) com o
+     diff colorido do arquivo atual (+ verde, - vermelho, @@ azul) via
+     _DiffHighlighter (QSyntaxHighlighter); usa obter_diff_raw() de
+     diff_git_gutter.py — sem duplicar subprocess
+  ✅ diff_git_gutter.py: obter_diff_raw(arquivo, projeto_path) adicionado —
+     retorna texto bruto do diff (HEAD → fallback --cached); reutiliza a
+     mesma lógica de _executar_diff sem duplicar código
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. EM DESENVOLVIMENTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  🔄 Outline — modo busca global: gerenciamento completo do ciclo de vida da
+     thread (cancelamento limpo ao digitar nova busca) — implementado mas
+     ainda em observação para estabilidade em projetos grandes.
+
+  🔄 ValidadorImports — limpeza dos métodos legados: _verificar_por_regex(),
+     _modulo_existe() e _nome_existe_no_modulo() ainda presentes na classe
+     principal (duplicados com os da _ThreadValidador) — aguardam remoção
+     segura após validação do novo fluxo.
+
+  🔄 IrParaDefinicao — cobertura de import-following para módulos com
+     múltiplos níveis de submódulos (ex: from a.b.c import X) — cobre os
+     casos mais comuns mas casos profundos ainda em refinamento.
+
+  🔄 CodeLens — threshold de exibição: "N usos" sempre exibido quando N>0,
+     sem filtrar por relevância (ex: getters triviais com muitos usos).
+     Critério de relevância planejado mas não implementado.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. PENDENTE / PRÓXIMA ORDEM  🔲
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Remover minimap.py (Ui/) ou renomeá-lo claramente como legado.
+  2. Lua/realce.py — RealceSintaxeLua (keywords Lua, strings, comentários --).
+     Único provider sem realce real (usa _RealceInerte herdado).
+  3. Limpar métodos legados de ValidadorImports (apenas os da _ThreadValidador).
+  4. Hein — autocomplete de links internos [[...]] (sugerir .hein do projeto).
+  5. Remover shims em Funcionalidades/ após auditar importadores legados.
+  6. Bare filename recognition — 'Makefile', 'Dockerfile' sem extensão.
+  5. Implementar serialização do EstadoEditor para disco (JSON por projeto).
+  6. Cache de resultado em IrParaDefinicao._e_navegavel() (TTL curto).
+  7. Integrar _ThreadInstalador ao ValidadorImports (clique direto no sublinhado).
+  8. Testes unitários do Indexador e das estratégias de IrParaDefinicao.
+  9. Outline para JavaScript, TypeScript, Markdown.
+ 10. Suporte a múltiplos arquivos de breakpoints/bookmarks no EstadoEditor.
+
+dReferences — filtro de "chamadas reais" (nome( ou nome () pode
+      excluir referências legítimas de atribuição ou decoradores onde o
+      símbolo aparece sem parênteses imediatos.
+
+  ⚠️  _WorkerBusca em Outline/ e _WorkerBusca em Funcionalidades/find_in_files.py
+      têm o mesmo nome de classe interno — risco de confusão durante
+      depuração ou busca no código.
+
+  ⚠️  StickyScroll._atualizar() recalcula o contexto do zero a cada mudança
+      de scroll (percorre todos os blocos desde o início até a linha visível)
+      — pode ser lento em arquivos com milhares de linhas.
+
+  ⚠️  IrParaDefinicao._e_navegavel() é chamado no mouseMoveEvent com Ctrl
+      pressionado; faz consulta ao banco SQLite + AST a cada movimento do
+      mouse — pode gerar latência perceptível em projetos grandes.
+
+
+--- 2026-07-13 Sessão 18: Provider Hein (.hein) ---
+✅ Mult_Linguas/Hein/__init__.py: HeinProvider completo
+✅ Mult_Linguas/Hein/realce.py: RealceSintaxeHein — marcador invisível
+   + conteúdo formatado; set_zoom(); !!r/g/b; ``` bloco; {oculto}
+✅ Mult_Linguas/Hein/outline.py: analisar_hein() — 2 níveis hierárquicos
+✅ Integração painel_outline.py: tree_hein dispatch, _analisar_hein(),
+   barra de formatação com 7 botões (Título, Subtítulo, Lista, Checklist,
+   Destaque, Negrito, Link), toggle por provider.tem_barra_formatacao
+✅ Hein/_DOC_HEIN.txt criado
+
+--- 2026-07-14 Sessão 20: BarraOutline + ⎇ Diff na BarraStatus ---
+✅ Funcionalidades/barra_status.py: BarraOutline adicionada — classe que
+   centraliza estilo (editor.busca_match_ativo, 22px, WA_StyledBackground,
+   borda #191928) e widgets públicos do rodapé do outline (lbl_erros,
+   lbl_avisos, btn_atalhos_fold, btn_ajuda); QPushButton importado
+✅ Funcionalidades/barra_status.py: _DiffHighlighter (QSyntaxHighlighter)
+   adicionado — coloriza + verde, - vermelho, @@ azul, cabeçalhos dim
+✅ Funcionalidades/barra_status.py: BarraStatus ganha botão ⎇ Diff
+   (checkable, highlight azul quando ativo) + _construir_painel_diff()
+   com título, QPlainTextEdit read-only monospace e botão ✕ fechar;
+   _toggle_diff / _abrir_diff / _fechar_diff / _atualizar_diff /
+   _posicionar_painel_diff adicionados; diff lido via obter_diff_raw()
+✅ Ui/diff_git_gutter.py: obter_diff_raw(arquivo, projeto_path) adicionado
+   — retorna stdout bruto do git diff sem duplicar lógica de subprocess
+✅ Outline/painel_outline.py: _construir_barra_atalhos simplificado —
+   instancia BarraOutline e expõe widgets como atributos self._lbl_ol_*
+   / self._btn_*; estilo e altura removidos daqui (vivem em BarraOutline)
+✅ Outline/painel_outline.py: cores dos labels de erro/aviso fixadas —
+   ⊗ #f48771 (vermelho) e △ #e5c07b (amarelo) sem sobrescrita dinâmica
+
+--- 2026-07-14 Sessão 19: PopupQuickFix — segurança e polimento ---
+✅ Core/editor_acoes.py: Key_Escape volta a fechar o _popup_quick_fix
+✅ Autocomplete/quick_fix.py + autocomplete.py: fechamento automático do
+   popup/lista/tooltip via focusChanged + applicationStateChanged (não
+   ficam mais flutuando sobre outras janelas após perda de foco)
+✅ Ativação por Enter/↑/↓ do quick-fix removida em definitivo — só clique
+   explícito nos botões Importar/Instalar aciona a ação
+✅ Autocomplete/quick_fix.py: _ToastInstalando recriado com botão
+   "✕ Cancelar" — mata o QProcess do pip install em andamento
+✅ Editor.py: _avaliar_e_mostrar_quick_fix ganhou guard de "assentamento"
+   (~1.2s desde a última edição na linha) — corrige popup abrindo em
+   identificador ainda incompleto durante digitação normal
+
+--- 2026-07-16 Sessão 26: Performance — lru_cache quick_fix, log.info autocomplete ---
+✅ Autocomplete/quick_fix.py: adicionado import functools e
+   @functools.lru_cache(maxsize=512) em modulo_em_venv(nome) — elimina
+   2 chamadas de disco por tick do debounce de 80ms enquanto o mouse paira
+   sobre uma linha com erro; modulo_em_stdlib() já era O(1) (set lookup)
+✅ Autocomplete/autocomplete.py iniciar(): log.ok → log.info na mensagem
+   "Worker pronto" — elimina ruído visual no painel de logs ao abrir
+   múltiplas abas em modo dev
+
+--- 2026-07-27 Sessão 41: Complemento Rodada 8 — shutdown crash fix ---
+✅ Ui/diff_git_gutter.py: creationflags=_CREATE_NO_WINDOW adicionado em
+   proc2 (git diff --cached) e proc3 (git ls-files --error-unmatch) em
+   _executar_diff() — fix original cobria apenas proc1 e obter_diff_raw();
+   todos os 4 subprocess.run() do arquivo têm a flag agora ✅
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+══════════════════════════════════════════════════════════════
+Sessão 42 — Corretor ortográfico manual + PopupBase (2026-07-31)
+══════════════════════════════════════════════════════════════
+✅ popup_base.py (NOVO): PopupBase — base unificada para todos os popups flutuantes;
+   enterEvent/leaveEvent corrigem fechamento ao mover mouse para o popup
+✅ corretor_ortografico.py: reescrito — sem varredura automática; modo 1 = menu de
+   contexto (página inteira, background thread, sublinhado cinza); modo 2 = clique do
+   meio (palavra única, imediato); _PopupSugestoes herdando PopupBase
+✅ quick_fix.py: _ToastInstalando e PopupQuickFix migrados para PopupBase
+✅ Editor/__init__.py: "Corretor ortográfico" adicionado ao menu de contexto
+✅ estrutura.py: _garantir_dicionarios() sempre sobrescreve dicts bundlados
+
+══════════════════════════════════════════════════════════════
+Sessão 20 — Refactor Editor.py + Diff Hover Popup (Zed-style)
+══════════════════════════════════════════════════════════════
+
+✅ REFACTOR-01 — Editor.py → pacote Editor/
+    Editor.py (2148 linhas) foi dividido em:
+    • Editor/__init__.py   — CodeEditor + imports dos sub-arquivos
+    • Editor/_code_lens.py         — _CodeLensOverlay, _extrair_nome_lens
+    • Editor/_handle_outline.py    — _HandleOutline (alça do outline)
+    • Editor/_barra_salto.py       — _BarraSalto (botões ⤒/⊟/⤓)
+    • Editor/_scroll_bar_fold.py   — _ScrollBarFold (marcas de fold)
+    • Editor/_cursor_personalizado.py — _GerenciadorCursorPersonalizado
+    Imports externos (from _EDITOR_.Editor import CodeEditor) mantidos
+    transparentemente via __init__.py. Imports relativos ajustados
+    de . para .. em todos os sub-arquivos.
+
+✅ IMP-GIT-HOVER — Diff hover popup estilo Zed
+    • diff_git_gutter.py: + sinal hunks_prontos (Signal(object)) e
+      função parsear_hunks() que retorna list[dict] com:
+        "linhas", "removidas", "adicionadas", "cabecalho"
+      ThreadDiffGutter.run() agora emite ambos os sinais.
+    • Editor/_popup_diff_hunk.py (novo): _PopupDiffHunk — QFrame flutuante
+      (Qt.ToolTip | FramelessWindowHint | WA_ShowWithoutActivating).
+      Mostra linhas removidas em fundo vermelho, adicionadas em verde.
+      Fecha com delay suave para não piscar ao mover o mouse.
+    • numeros_linha.py: set_git_hunks() + _mapa_linha_hunk para lookup
+      O(1). _mostrar_popup_hunk() / _adiar_fechar_popup_hunk() chamados
+      no mouseMoveEvent (zona git) e leaveEvent.
+    • Editor/__init__.py: hunks_prontos conectado ao set_git_hunks;
+      novo método ir_para_proxima_mudanca_git() com wrap-around.
+    • barra_status.py: botão "⎇ Diff" não é mais checkable; chama
+      ir_para_proxima_mudanca_git() em vez de abrir painel de texto.

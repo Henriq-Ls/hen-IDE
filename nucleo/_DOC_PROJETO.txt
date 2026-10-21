@@ -1,0 +1,155 @@
+# hein-basic/nucleo/_DOC_PROJETO.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — DOCUMENTO MESTRE
+  Última atualização: 2026-08-11 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: centralização de subprocessos sem console)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HIERARQUIA DOS DOCUMENTOS
+─────────────────────────
+1. nucleo/_DOC_PROJETO.txt     ← visão geral e arquitetura
+2. nucleo/_DOC_RESUMO.txt      ← estado atual agregado
+3. nucleo/_DOC_PERFORMANCE.txt ← performance e fixes
+4. _DOC_[MÓDULO].txt           ← contrato detalhado do módulo
+5. _STATUS_[MÓDULO].txt        ← estado, pendências e problemas
+
+OBJETIVO DO PROJETO
+───────────────────
+A hein IDE é uma IDE desktop para desenvolvimento Python com PySide6.
+Seu fluxo de abertura de projetos prioriza isolamento de processos para evitar
+que threads, painéis e recursos Qt de projetos diferentes compartilhem o mesmo
+processo de execução.
+
+COMO INSTALAR E RODAR
+─────────────────────
+1. Iniciar main.py sem argumento para abrir o picker de boas-vindas.
+2. Escolher um projeto no picker.
+3. O lançador inicia uma nova execução de main.py com --projeto=<caminho>.
+4. A MainWindow é aberta diretamente no projeto escolhido.
+5. [INFORMAÇÃO NÃO CONFIRMADA] Pré-requisitos, dependências e procedimento de
+   instalação completo não estão definidos nos documentos disponíveis nesta sessão.
+
+INTERFACE — O QUE O USUÁRIO VÊ
+───────────────────────────────
+• Picker inicial com projetos recentes, abrir projeto, abrir arquivo, clone Git,
+  configuração de destino, interpretador Python, criação de novo projeto e estado
+  opcional da conta GitHub com acesso aos repositórios da sessão ativa.
+• Editor principal aberto diretamente quando um caminho é recebido por --projeto.
+• O picker pode ser exibido como diálogo não-modal dentro do editor no modo dialog.
+
+CASOS DE USO
+────────────
+• Iniciar a IDE sem projeto e escolher um projeto recente.
+• Abrir uma pasta existente ou um arquivo Python como projeto.
+• Criar um novo projeto com templates e uma venv escolhida.
+• Clonar um repositório e abrir o projeto clonado.
+• Abrir outro projeto em uma nova instância sem desmontar o editor atual.
+
+ARQUITETURA GERAL
+─────────────────
+Processo picker
+  main.py sem --projeto
+    └─ QApplication
+        └─ JanelaPicker(modo="boot")
+             ├─ UI leve
+             ├─ workers sob ação do usuário
+             └─ lancador_projeto.abrir_projeto_novo_processo()
+
+Processo editor
+  main.py --projeto=<caminho>
+    └─ QApplication
+        └─ MainWindow(projeto_inicial=<caminho>)
+
+Regra de isolamento:
+  cada projeto escolhido → novo processo Python → MainWindow própria
+  Não abrir projeto novo substituindo o projeto do processo atual.
+
+ESTRUTURA DE MÓDULOS
+────────────────────
+  _APP_/Boas_Vindas/  | entrada leve, criação e lançamento de projetos
+                       | _DOC_BOAS_VINDAS.txt / _STATUS_BOAS_VINDAS.txt
+  _PAINEL_ESQUERDO_/Git/ | autenticação GitHub, repositórios e operações Git locais
+                          | _DOC_GIT.txt / _STATUS_GIT_.txt
+  _EXECUTAVEL_/          | build local PyInstaller + release via GitHub Actions
+                          | configuração e arquivos gerados ficam por projeto em .hein/
+  _PAINEL_ESQUERDO_/painel_executavel.py | configuração do build para o projeto ativo
+  _APP_/main_window/   | janela principal do editor e seus mixins
+                       | _APP_/_DOC_APP_.txt
+  _APPDATA_/           | dados persistentes da aplicação
+                       | _APPDATA_/_DOC_APPDATA_.txt
+  _UTILITARIOS_/       | utilitários compartilhados e configuração de processos
+                        | _UTILITARIOS_/_DOC_UTILITARIOS_.txt
+  _TERMINAIS_/         | terminais e painéis de execução
+                       | _TERMINAIS_/_DOC_TERMINAIS_.txt
+
+REGRAS GLOBAIS
+──────────────
+RG-01  O processo sem --projeto é reservado ao picker inicial.
+RG-02  Um processo com --projeto abre a MainWindow diretamente no projeto.
+RG-03  Nenhum módulo pode reimplementar o Popen de abertura de projetos; usar
+       _APP_/Boas_Vindas/lancador_projeto.py.
+RG-04  Projetos diferentes não devem compartilhar o ciclo de vida de threads,
+       painéis Qt ou estado de projeto do mesmo processo.
+RG-05  Operações pesadas do picker devem ser acionadas sob demanda, não no boot.
+RG-06  A venv do usuário deve usar um interpretador de projeto selecionado,
+       nunca o Python usado para executar a própria IDE.
+RG-07  O fechamento de widgets Qt com workers ativos deve desconectar sinais e
+       agendar a destruição segura; nunca deixar QThread rodando ser destruído.
+RG-08  A autenticação GitHub é opcional; abrir e criar projetos locais não depende
+       de sessão remota.
+RG-09  A sessão GitHub deve ser compartilhada entre a tela inicial e o painel Git,
+       usando config_github() como fonte única.
+RG-10  Tokens GitHub não podem aparecer em URLs, argumentos de processos, remotos
+       persistidos ou logs; operações HTTPS usam credencial temporária isolada.
+RG-11  Processos auxiliares internos devem usar a configuração central
+        opcoes_processo_sem_console(); comandos que abrem Explorer, navegador ou
+        terminal visível permanecem fora dessa regra.
+RG-12  O build local usa somente a .venv do projeto ativo; não depende da sessão
+        GitHub. Releases usam config_github() e o helper temporário existente,
+        sem credenciais em URLs/argumentos, e não sobrescrevem tags.
+
+DEPENDÊNCIAS
+────────────
+• PySide6/Qt para QApplication, widgets, sinais, threads e processo de janela.
+• Python subprocess para criar processos independentes e executar Git.
+• Git para clone de repositórios.
+• [INFORMAÇÃO NÃO CONFIRMADA] Lista completa de dependências de instalação não
+  está disponível nos documentos analisados.
+
+FLUXOS PRINCIPAIS
+─────────────────
+F-01  Boot sem projeto
+  main.py → QApplication → lock do picker → JanelaPicker(boot) → app.exec()
+
+F-02  Boot com projeto
+  main.py --projeto=caminho → QApplication → MainWindow(caminho) → app.exec()
+
+F-03  Abrir projeto pelo picker
+  projeto_escolhido → hide → lancador_projeto → novo main.py
+  → close/quit do processo picker
+
+F-04  Criar projeto
+  PainelNovoProjeto → validação → arquivos/templates → criar_projeto
+  → venv opcional → projeto_escolhido → novo processo
+
+F-05  GitHub opcional na tela inicial
+  JanelaPicker → config_github()
+    ├─ sem sessão → “GitHub não conectado”, mantendo operações locais
+    └─ login solicitado → _PainelDeviceFlow → sessão compartilhada
+         ├─ troca/adiciona/remove conta → invalida lista anterior
+         └─ GitHubAPI.listar_repositorios() → clone via GerenciadorGit
+
+OBSERVAÇÕES IMPORTANTES
+───────────────────────
+OBS-01  O modo boot encerra o processo inicial depois de iniciar o novo processo.
+OBS-02  O modo dialog fecha o picker, mas o processo do editor permanece ativo.
+OBS-03  WA_DeleteOnClose e hide() fazem parte do controle de ciclo de vida do picker.
+OBS-04  O erro 0x8001010d ainda foi relatado durante o boot e precisa de investigação
+        específica no Windows.
+OBS-05  A ocultação dos subprocessos internos foi centralizada em
+         _UTILITARIOS_/processo_sem_console.py; a confirmação final depende de teste
+         no Windows sem console aberto.
+
+LICENÇA / CRÉDITOS
+──────────────────
+[INFORMAÇÃO NÃO CONFIRMADA] Licença e créditos oficiais não foram definidos nos
+documentos analisados nesta sessão.

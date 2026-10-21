@@ -1,0 +1,397 @@
+# 📁 _APPDATA_/_STATUS_APPDATA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _APPDATA_
+Última atualização: 2026-07-31 (Sessão 42: Dicionários PT-BR + tech_whitelist)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# STATUS DO MÓDULO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## IMPLEMENTADO ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ── Pacote _APPDATA_/ ─────────────────────────────────────────
+
+  - __init__.py
+    Exporta GerenciadorAppData e singleton appdata pronto para uso.
+
+  - estrutura.py
+    garantir_estrutura(pasta_appdata, pasta_configura):
+      ✅ Cria pasta raiz do AppData se ausente
+      ✅ Cria _conf_bakup/ se ausente
+      ✅ Cria estado_editor/ se ausente (renomeado 2026-07-15, era
+         editor_states/ — nome em inglês, inconsistente com o resto)
+      ✅ Cria configuracoes/ se ausente (novo 2026-07-15 — agrupa os 5
+         JSONs de config, que antes ficavam soltos direto na raiz)
+      ✅ Cria tarefas/ se ausente
+      ✅ Cria autocompletar/ se ausente
+      ✅ Cria temas/ se ausente (NÃO cria mais "default/" — removida
+         2026-07-15, ver PROBLEMAS CONHECIDOS)
+      ✅ Copia templates (simbolos.json, palavras.txt, emojis.json)
+         para autocompletar/ apenas se ainda não existirem (primeiro uso)
+      ✅ Copia 5 JSONs de config de _CONFIGURA_/ para AppData/configuracoes/
+         (IMP-03, reorganizado 2026-07-15) apenas se ainda não existirem
+         no destino (primeiro uso) — "thema.json" não está mais nessa
+         lista (tema vive só em temas/)
+      ✅ Cria e popula temas/ de _APPDATA_/temas/ (IMP-04)
+         (temas movidos de hein/temas/ raiz para _APPDATA_/temas/)
+      ✅ _migrar_pasta_editor_states() renomeia editor_states/ →
+         estado_editor/ em instalações existentes, sem perder estados
+         já salvos (só renomeia se estado_editor/ ainda não existir)
+      ✅ _garantir_leia_me() cria LEIA-ME.txt na raiz do AppData —
+         explicação em português simples de cada pasta/arquivo, pensada
+         pra usuário iniciante. Só na 1ª vez; nunca sobrescreve edição
+         do usuário.
+      ✅ _limpar_legado() remove AppData/default/ órfã de instalações
+         anteriores à correção de 2026-07-15
+      ✅ Stdlib puro — sem PySide6, sem imports internos da IDE
+      ✅ Falhas silenciosas — nunca lança exceção
+
+  - gerenciador.py
+    GerenciadorAppData (Singleton/Facade):
+      ✅ instancia() — retorna ou cria a instância única
+      ✅ inicializar() — idempotente, chama garantir_estrutura()
+      ✅ Propriedades de caminho:
+           raiz, layout, recentes, sessao, tarefas_globais,
+           github_config, conf_bakup, estado_editor, configuracoes, tarefas,
+           autocompletar, temas,
+           venv_compartilhada, python_compartilhado
+      ✅ venv_compartilhada_existe → bool
+      ✅ restaurar_padrao(componente) — copia direto de _CONFIGURA_/
+         (ou, para "tema", de _APPDATA_/temas/tema_padrao.json) para
+         AppData/ (corrigido 2026-07-15 — antes lia de AppData/default/,
+         uma cópia extraída só uma vez no primeiro uso e nunca mais
+         atualizada; ver PROBLEMAS CONHECIDOS/histórico abaixo)
+         suporta: "tema" | "configurar" | "atalhos" | "autocomplete" | "nucleo" | "perfil"
+      ✅ main_window/base.py::restaurar_padroes() agora delega a este
+         método por componente — único caminho de código para restore
+         (antes eram duas implementações separadas e desalinhadas)
+      ✅ Import de log.py é lazy (evita circular no startup)
+      ✅ Log via _LOG_/log.py para criações e restaurações
+
+  - backup.py
+    fazer_backup():
+      ✅ Copia os JSONs ativos de %APPDATA%/hein/ para _conf_bakup/
+         com timestamp YYYYMMDD_HHMMSS no nome
+      ✅ Rotação FIFO — mantém MAX_COPIAS=5 por arquivo
+      ✅ Chamado em MainWindow.closeEvent() via import lazy
+      ✅ Falha silenciosa por arquivo
+
+  - temas/
+      ✅ 54 temas dos estados brasileiros (dia + noite)
+      ✅ tema_padrao.json — tema padrão explícito da IDE
+
+  ── Reorganização do sistema de temas (implementada 2026-07-14) ──
+
+  ✅ ETAPA 1 — hein/temas/ movida para hein/_APPDATA_/temas/;
+               tema_padrao.json criado a partir de _CONFIGURA_/thema.json;
+               pasta hein/temas/ removida da raiz.
+
+  ✅ ETAPA 2 — estrutura.py atualizado:
+               · "default" adicionado a _SUBPASTAS
+               · _JSONS_DEFAULT + _garantir_default() criados
+               · _garantir_temas() corrigido para ler de
+                 os.path.join(os.path.dirname(__file__), "temas")
+                 em vez de raiz_ide/temas (que não existia mais)
+
+  ✅ ETAPA 3 — gerenciador_tema.py (BUG #2 corrigido):
+               · Removido o bloco que zerava _tema_json_atual em
+                 _aplicar_reload() quando thema.json era tocado
+               · Removido addPath(ARQUIVO_TEMA) de iniciar_hot_reload()
+                 (thema.json é backup de fábrica, não o tema ativo)
+
+  ✅ ETAPA 4 — barra_aba_topo.py (BUG #1 corrigido):
+               · Removida a comparação de mtime entre thema.json e
+                 tema_json que descartava a escolha do usuário
+               · _restaurar_tema() agora cai para
+                 AppData/temas/tema_padrao.json quando não há tema
+                 salvo, o arquivo salvo não existe, ou é a 1ª execução
+                 (FileNotFoundError), persistindo a escolha via
+                 QTimer.singleShot(0, self._salvar)
+
+  ✅ ETAPA 5 — Ctrl+3 corrigido (BUG #6):
+               · mixin_layout.py: abrir_arquivo_configuracoes() agora
+                 lê _tema_json_atual da barra de abas, com fallback
+                 para tema_padrao.json, em vez de abrir ARQUIVO_TEMA fixo
+               · mixin_abas.py: roteamento do ThemaExplorer passou a
+                 aceitar qualquer arquivo dentro de AppData/temas/
+                 (não só ARQUIVO_TEMA); o título da aba agora reflete
+                 o nome do arquivo real via setTabText()
+               · thema_explorer.py: ThemaExplorer.__init__() agora
+                 aceita caminho: str = None (retrocompatível, default
+                 ARQUIVO_TEMA). Adicionado método abrir(caminho) que
+                 re-targeta a aba já aberta (troca watcher + recarrega
+                 + atualiza título) quando o usuário troca de tema
+                 ativo entre uma abertura e outra do Ctrl+3.
+                 ⚠️ Esse ajuste no ThemaExplorer vai além do texto
+                 original do plano (que proibia tocar nesse arquivo) —
+                 sem ele, o roteamento corrigido em mixin_abas.py não
+                 teria efeito real, pois o painel sempre reabriria
+                 ARQUIVO_TEMA internamente. Autorizado explicitamente
+                 pelo usuário durante a implementação.
+
+  ✅ ETAPA 6 — _CONFIGURA_/default/ apagada (só tinha um README morto;
+               a função equivalente já está em estrutura.py).
+
+  ✅ IMP-06 (anexado à mesma sessão, ref. PENTE_FINO/
+     PT_RELOADS_SALVE_ESTADO_PERCISTENTE.txt §2.1) — Defer do
+     freeze ao salvar tema: gerenciador_tema.py · aplicar_tema_json()
+     agora chama QTimer.singleShot(0, self._aplicar_reload) em vez de
+     self._aplicar_reload() direto. O clique do botão "Salvar" no
+     ThemaExplorer solta visualmente antes do setStyleSheet (síncrono,
+     custoso) recalcular o estilo de toda a árvore de widgets.
+
+  ── Integrações com o restante da IDE ────────────────────────
+
+  - main.py
+    ✅ appdata.inicializar() chamado entre carregar_fontes() e
+       MainWindow(), garantindo estrutura antes de qualquer módulo
+
+  - _APP_/main_window.py
+    ✅ closeEvent() adicionado: chama fazer_backup() + salvar_sessao()
+       antes de fechar a janela
+    ✅ _restaurar_ou_outdoor() adicionado: restaura sessão anterior ou
+       abre Outdoor; chamado no startup em vez de abrir_outdoor() (IMP-08)
+
+  - _EDITOR_/Autocomplete/autocomplete.py
+    ✅ _CACHE_FONTES + _carregar_fontes_appdata() + _fontes_appdata_filtradas()
+       + _invalidar_cache_fontes() adicionados
+    ✅ fontes_filtradas injetado em _calcular_complete()
+    ✅ fontes_dedup mergeado em _aplicar_completions()
+    ✅ Lê simbolos.json, palavras.txt e emojis.json do appdata.autocompletar
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PENDENTE DE IMPLEMENTAÇÃO ⏳  ← PRÓXIMA SESSÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ── Reorganização do sistema de temas + IMP-06 ────────────────
+  ✅ Concluída em 2026-07-14 — ver seção IMPLEMENTADO acima.
+
+  ⚠️  Pendência de baixa severidade (não bloqueante):
+  _JSONS_DEFAULT (estrutura.py) inclui autocomplete.json, mas
+  restaurar_padroes() em main_window/base.py — que o plano original
+  proibia alterar — não usa esse arquivo em seu dict `alvos`. Sobra
+  morta em AppData/default/autocomplete.json; considerar limpar ou
+  estender restaurar_padroes() numa sessão futura.
+
+  ✅ IMP-01 — Ctrl+Z possuído ao abrir arquivo (implementado 2026-07-14)
+      → _EDITOR_/Core/gerenciador_arquivo.py · abrir()
+      → setUndoRedoEnabled(False) antes do setPlainText(), True depois
+      ⚠️ Nota: esta classe (GerenciadorArquivo) não é instanciada em
+        nenhum outro módulo — é código órfão. O caminho real de abertura
+        de arquivo é _APP_/tab_widget.py::add_new_tab() → CodeEditor
+        .load_file() (_EDITOR_/Editor/__init__.py), que já envolvia a
+        troca de texto em setUndoRedoEnabled(False/True) antes desta
+        sessão. O ajuste foi aplicado por completude/consistência com
+        o Pente-Fino, mas o bug relatado não reproduz hoje pelo fluxo
+        real da IDE.
+
+  ✅ IMP-02 — Cursor vai para o fim do arquivo ao abrir (implementado 2026-07-14)
+      → Causa raiz real (divergente do Pente-Fino, que apontava
+        "Editor.py"): _APP_/tab_widget.py::add_new_tab() ·
+        closure _focar_e_posicionar(), agendada via QTimer.singleShot(0, ...)
+        após load_file(), forçava QTextCursor.End sempre.
+      → Corrigido para QTextCursor.Start. Quando há estado salvo,
+        _restaurar_estado_arquivo() (QTimer 50ms, dentro de load_file)
+        roda depois e sobrescreve com a posição real — ordem de timers
+        já garantia a precedência correta, só faltava o valor padrão certo.
+
+  ── Migrações pendentes (sessões futuras) ────────────────────
+
+  🔲 Migrar git_config.py para appdata.github_config
+
+  🔲 Migração de módulos para usar appdata.<propriedade>:
+      GerenciadorAbas_AutoSalve.py → appdata.sessao / appdata.raiz
+      _EDITOR_/Core/estado_editor.py   → appdata.estado_editor
+      _PAINEL_ESQUERDO_/Git/git_config.py → appdata.github_config
+
+  ✅ IMP-11 — Persistir último diretório nos diálogos de arquivo
+      (implementado 2026-07-14 — fila do Pente-Fino encerrada)
+      Todos usam QSettings("hein", "hein_IDE"), uma chave por contexto:
+      → _EDITOR_/Editor/__init__.py::save_file()
+        chave "ultima_pasta_salvar_editor" (raiz do projeto tem prioridade)
+      → _PAINEL_DIREITO_/Ias/ias.py::_sel_arquivo()
+        chave "ultima_pasta_abrir_ia"
+      → _TERMINAIS_/json_explorer.py::_salvar_json()
+        chave "ultima_pasta_salvar_json_explorer"
+      → _TERMINAIS_/visualizador_imagem.py::_salvar_dialog()
+        chave "ultima_pasta_visualizador_imagem" (só se a sugestão vier
+        sem pasta própria — preserva o comportamento de sugerir a pasta
+        do arquivo de origem quando ela existe)
+      → _PAINEL_ESQUERDO_/FileTree/painel.py::_restaurar_item_lixeira()
+        chave "ultima_pasta_filetree" (pasta atual do FileTree tem
+        prioridade sobre a última usada)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## PROBLEMAS CONHECIDOS ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Nenhum. Corrigido em 2026-07-15:
+
+  ✅ P-05 — AppData/default/ era uma segunda fonte de verdade que
+     ficava desatualizada: populada uma única vez no primeiro uso a
+     partir de _CONFIGURA_/, e nunca mais tocada depois disso. Se a
+     IDE fosse atualizada (novo _CONFIGURA_/*.json), "Restaurar
+     Padrões" continuava restaurando a versão antiga, sem o usuário
+     perceber. Corrigido: default/ removida, restaurar_padrao() e
+     restaurar_padroes() agora leem direto de _CONFIGURA_/ a cada
+     chamada. _limpar_legado() remove a pasta órfã em instalações
+     existentes na próxima inicialização.
+
+  ✅ P-06 — Havia dois arquivos de "tema padrão" que podiam
+     desincronizar: _CONFIGURA_/thema.json e _APPDATA_/temas/
+     tema_padrao.json (idênticos por acaso, sem garantia de
+     permanecer assim). ARQUIVO_TEMA (_CONFIGURA_/__init__.py)
+     apontava para AppData/thema.json — nem tema ativo nem o arquivo
+     de fábrica correto; funcionava só porque barra_aba_topo.py::
+     _restaurar_tema() sobrescrevia esse valor por fora, na
+     inicialização. Corrigido: "thema.json" removido de _CONFIGURA_/
+     e do AppData; ARQUIVO_TEMA agora aponta direto para
+     AppData/temas/tema_padrao.json — a única fonte de tema padrão.
+
+  ✅ P-04 (PENTE_FINO/PT_APPDATA.txt) — gerenciador.py::restaurar_padrao()
+     era código órfão (nenhum botão/menu chamava) que apontava para
+     _CONFIGURA_/default/ e _CONFIGURA_/ (pasta do código-fonte) em vez
+     de AppData/default/ e AppData/. Superado por P-05: default/ não
+     existe mais, e main_window/base.py::restaurar_padroes() agora
+     delega a este método em vez de duplicar a lógica.
+
+  Os 6 bugs do sistema de temas foram corrigidos em 2026-07-14:
+
+  ✅ BUG #1 — _restaurar_tema() descartava tema selecionado — corrigido
+  ✅ BUG #2 — Hot-reload de thema.json zerava _tema_json_atual — corrigido
+  ✅ BUG #3 — "Restaurar Padrões" nunca funcionava (default/ ausente) — corrigido
+  ✅ BUG #4 — hein/temas/ solta na raiz — movida para _APPDATA_/temas/
+  ✅ BUG #5 — Sem tema_padrao.json explícito — criado
+  ✅ BUG #6 — Ctrl+3 abria thema.json fixo — corrigido (+ ThemaExplorer
+              parametrizado, ajuste extra fora do plano original)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+─────────────────────────────────────────────────────────────────
+# HISTÓRICO DE SESSÕES
+─────────────────────────────────────────────────────────────────
+
+--- 2026-07-16 Sessão: defaults do PainelIA (AppData/ia/) ---
+✅ estrutura.py: "ia" adicionado a _SUBPASTAS; _garantir_ia() implementada —
+   copia perguntas.json e system_prompt.json de _APPDATA_/ia/ para
+   AppData/ia/ apenas se ainda não existirem (mesmo padrão dos temas).
+   Chamada adicionada em garantir_estrutura().
+✅ _APPDATA_/ia/ criada com dois arquivos-fonte que viajam com o executável:
+   · perguntas.json — 15 perguntas em 3 categorias (📊 Análise /
+     🐛 Qualidade / 🎨 Extras), 5 por categoria
+   · system_prompt.json — prompt padrão da IDE + max_tokens: 4096
+   IAs (credenciais) NUNCA copiadas — só o usuário configura.
+✅ ias_Config.py: _pasta_ia() e _carregar_json_ia() adicionados;
+   carregar_config() agora carrega system_prompt e perguntas_predefinidas
+   de AppData/ia/ quando os campos estão vazios (primeiro uso).
+✅ ias_perguntas.py: CATEGORIAS_PADRAO atualizado para as 3 categorias
+   com emoji (📊 Análise, 🐛 Qualidade, 🎨 Extras).
+
+--- 2026-07-15 Sessão: pasta configuracoes/ + rename estado_editor + fixes ---
+✅ estrutura.py: nova subpasta "configuracoes/" agrupando os 5 JSONs de
+   config (configurar, atalhos, nucleo, autocomplete, perfil), que antes
+   ficavam soltos direto na raiz do AppData. layout.json, recentes.json
+   e sessao.json permanecem soltos na raiz (config "de sistema" da IDE,
+   não do usuário — decisão do usuário nesta sessão).
+✅ estrutura.py + gerenciador.py + estado_editor.py: pasta "editor_states/"
+   renomeada para "estado_editor/" — alinhada ao português do resto do
+   AppData (temas, tarefas, autocompletar). Migração automática e segura
+   para quem já tinha a pasta antiga (_migrar_pasta_editor_states()),
+   sem perder estados salvos.
+✅ _LOG_/log.py: corrigido bug real — _PASTA_LOG estava hardcoded para
+   ~/AppData/Roaming/hein (sem detectar sandbox de desenvolvimento), então
+   em execução via sandbox o hein.log era escrito numa pasta diferente da
+   que o usuário estava checando. Corrigido pra importar PASTA_APPDATA de
+   _CONFIGURA_ (mesma detecção dev/produção usada pelo resto da IDE).
+✅ _APP_/terminal_tab_widget.py + main_window/base.py: corrigido aviso
+   "QProcess/QThread destroyed while still running" ao fechar a IDE —
+   causa raiz era o terminal PowerShell matar seu próprio QProcess no
+   closeEvent() dele, que nunca dispara por ser aba interna (não janela
+   de topo). Adicionado encerrar_todos_processos() em TerminalTabWidget,
+   chamado no closeEvent() da janela principal antes do backup.
+✅ GerenciadorAbas_AutoSalve.py (fora de _APPDATA_, mas consumidor direto
+   de appdata.sessao/appdata.raiz): bug real de restauração de sessão
+   identificado e corrigido — ver P-07 em PENTE_FINO/PT_APPDATA.txt e
+   PT_RELOADS_SALVE_ESTADO_PERCISTENTE.txt para detalhes.
+✅ Novo LEIA-ME.txt gerado na raiz do AppData na primeira criação da
+   estrutura — explicação simples em português de cada pasta/arquivo,
+   pensada pra usuário iniciante.
+✅ EXPLICACAO_ESTRUTURA_APPDATA.txt, _DOC_APPDATA_.txt, _STATUS_APPDATA_.txt,
+   PENTE_FINO/PT_APPDATA.txt e PT_RELOADS_SALVE_ESTADO_PERCISTENTE.txt
+   atualizados para refletir tudo acima.
+
+--- 2026-07-15 Sessão: Fim de AppData/default/ + tema padrão único (P-05/P-06) ---
+✅ estrutura.py: removida "default" de _SUBPASTAS; removidos
+   _JSONS_DEFAULT e _garantir_default(); "thema.json" removido de
+   _JSONS_CONFIG. Adicionada _limpar_legado() — apaga AppData/default/
+   órfã em instalações existentes.
+✅ _CONFIGURA_/__init__.py: ARQUIVO_TEMA agora aponta para
+   AppData/temas/tema_padrao.json (antes: AppData/thema.json, um
+   arquivo que nunca era o tema ativo).
+✅ _CONFIGURA_/thema.json e thema.json.bak apagados — duplicata exata
+   de _APPDATA_/temas/tema_padrao.json, hoje a única fonte de tema
+   padrão do projeto.
+✅ gerenciador.py: restaurar_padrao() reescrito para ler direto de
+   _CONFIGURA_/ (ou, para "tema", de _APPDATA_/temas/) em vez de
+   AppData/default/. Passou a guardar pasta_configura na inicialização.
+✅ main_window/base.py: restaurar_padroes() reescrito para delegar a
+   appdata.restaurar_padrao() por componente, eliminando a segunda
+   implementação que copiava arquivos manualmente.
+✅ backup.py: "thema.json" removido de _MAPA_ARQUIVOS (não existe mais
+   cópia solta na raiz para fazer backup).
+✅ Menu da IDE dividido: "Projeto" (Tarefas do Projeto, Tarefas
+   Globais, Criar/Ativar Venv, Painel de Erros) e novo "Configurações"
+   (Tema, Atalhos, Config do Editor, Autocomplete, Núcleo, Executores,
+   Executável, Restaurar Padrões) — os itens de Ctrl+3 a Ctrl+9 são
+   ajustes da IDE, não do projeto aberto, e não deviam estar
+   misturados com as ações de projeto.
+✅ _DOC_APPDATA_.txt e _STATUS_APPDATA_.txt atualizados.
+
+--- 2026-07-15 Sessão: Fix restaurar_padrao() órfão (P-04) ---
+✅ gerenciador.py: restaurar_padrao() corrigido para copiar de
+   AppData/default/ para AppData/ (era _CONFIGURA_/default/ →
+   _CONFIGURA_/, pasta do código-fonte). Método não é chamado por
+   nenhum botão/menu hoje (o restore real está em
+   main_window/base.py::restaurar_padroes()); corrigido por
+   consistência e para não quebrar se algo passar a usá-lo.
+✅ PENTE_FINO/PT_APPDATA.txt e PT_RELOADS_SALVE_ESTADO_PERCISTENTE.txt
+   atualizados: IMP-01/02/06/11 marcados como implementados, causas
+   raiz reais documentadas (divergiam do texto original do Pente-Fino),
+   e P-04 registrado
+
+--- 2026-07-31 Sessão 42: Corretor ortográfico — dicionários PT-BR ---
+✅ estrutura.py: _garantir_dicionarios() adicionada ao garantir_estrutura(); passa a
+   sobrescrever sempre pt_BR_basico.txt e tech_whitelist.txt no AppData (antes só copiava
+   se não existia — impedia que atualizações do bundle chegassem a instalações existentes)
+✅ dicionarios/pt_BR_basico.txt: expandido de 1816 para ~3193 palavras PT-BR
+✅ dicionarios/tech_whitelist.txt: criado (431 termos técnicos/inglês a ignorar)
+
+--- 2026-06-28 Sessão 13 ---
+✅ _APPDATA_/ criado do zero (estrutura.py, gerenciador.py, __init__.py)
+✅ backup.py — fazer_backup() com rotação FIFO MAX_COPIAS=5
+✅ main.py — sincronizado com arquivo real do usuário + appdata.inicializar()
+✅ main_window.py — closeEvent() adicionado (fazer_backup + salvar_sessao)
+✅ autocomplete.py — fontes do AppData integradas no motor de autocomplete
+✅ _CONFIGURA_/autocompletar/ — templates renomeados para português puro
+✅ GerenciadorAbas_AutoSalve.py — diff de migração mostrado (pendente aplicação)
+
+--- 2026-07-14 Sessão atual ---
+✅ Análise completa do sistema de temas — 6 bugs documentados
+✅ Decisões arquiteturais confirmadas com o usuário
+✅ Plano de execução escrito em _PLANO_TEMA_REORGANIZACAO.txt
+✅ Implementadas as 6 etapas do plano (ver seção IMPLEMENTADO acima)
+✅ Ajuste extra autorizado pelo usuário: ThemaExplorer parametrizado
+   (caminho por parâmetro + método abrir()) para fechar o BUG #6 de
+   vez, já que o roteamento em mixin_abas.py por si só não bastava
+✅ _CONFIGURA_/default/ apagada (letra morta)
+✅ _PLANO_TEMA_REORGANIZACAO.txt apagado (implementação concluída)
+✅ _DOC_APPDATA_.txt e _STATUS_APPDATA_.txt atualizados
+✅ Consumido o documento PENTE_FINO (PT_APPDATA.txt +
+   PT_RELOADS_SALVE_ESTADO_PERCISTENTE.txt) para alinhar nomenclatura
+   (IMP-03/04/05/07/08/09/10 já batem com o que estava implementado)
+✅ Anexado IMP-06 (defer de _aplicar_reload via QTimer.singleShot) à
+   mesma sessão de temas — gerenciador_tema.py · aplicar_tema_json()
+✅ Fila da próxima sessão atualizada: IMP-01 e IMP-02 (bugs do editor)
+   engatilhados como próximas tarefas

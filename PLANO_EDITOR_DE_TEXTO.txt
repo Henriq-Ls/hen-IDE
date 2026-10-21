@@ -1,0 +1,257 @@
+PLANO DO PROJETO: EDITOR DE TEXTO DESKTOP HEN-DITOR
+===================================================
+
+Este arquivo é o handoff do projeto. Ele deve ser lido antes de qualquer
+alteração por outra IA ou por outra pessoa.
+
+OBJETIVO
+--------
+
+Transformar o hen-Ditor em um editor de texto desktop feito em PySide6, com uma
+experiência visual semelhante à de uma IDE, mas sem tentar manter uma IDE
+completa.
+
+O editor de texto, a edição e o autocomplete são o núcleo do produto. Não criar
+um aplicativo web e não trocar o projeto por uma implementação web.
+
+LAYOUT OBRIGATÓRIO
+------------------
+
+Manter estas quatro áreas na janela principal:
+
+1. File Tree à esquerda;
+2. editor com abas no centro;
+3. painel de IA à direita;
+4. terminal na parte inferior.
+
+Essas áreas devem continuar funcionando juntas. Não entregar apenas uma tela
+estática ou um editor isolado.
+
+DECISÕES DE PRODUTO JÁ TOMADAS
+------------------------------
+
+- O `Editor_Hein` trabalha exclusivamente com arquivos `.hen`.
+- Arquivos `.txt`, `.md`, `.py`, `.js`, `.ts`, `.json`, `.html`, `.css`, `.csv`
+  e qualquer outra extensão devem ser recusados claramente; não criar um
+  segundo editor para essas extensões.
+- Preservar o editor `Editor_Hein.CodeEditor`, pois ele é a referência do
+  cérebro do produto.
+- Preservar autocomplete, edição, busca, múltiplos cursores, gutter,
+  realce por extensão e salvamento quando esses recursos já estiverem
+  funcionando no `Editor_Hein`.
+- Preservar File Tree, painel de IA, terminal e os utilitários de
+  `_UTILITARIOS_`.
+- Manter Git local, se possível por ações locais e status/diff, mas não incluir
+  login, push, pull ou criação de repositório no GitHub.
+- Não alterar o terminal nesta etapa. Reutilizar `TerminalTabWidget` como ele
+  está e só conectar a janela a ele.
+- Preservar os recursos de log necessários ao editor. O painel visual antigo de
+  logs não é prioridade.
+- O `_NUCLEO_` ainda precisa de uma auditoria profunda em etapa futura. Não
+  fazer uma remoção ampla dessa pasta como atalho.
+
+ESTADO REAL ATUAL
+-----------------
+
+Atenção: o texto anterior deste plano dizia que a limpeza havia sido concluída
+e que um núcleo novo já existia. Isso estava errado e foi corrigido. A
+limpeza não foi concluída, nenhum núcleo novo foi criado e as pastas antigas
+não foram apagadas.
+
+O ponto de partida correto é:
+
+- `hen-Ditor/main.py` ainda é o launcher antigo. Ele cria a aplicação, prepara
+  logs, lock, fontes, AppData/licença e abre a `MainWindow` antiga.
+- `hen-Ditor/_APP_/__init__.py` ainda está praticamente vazio.
+- `hen-Ditor/_APP_/main_window/__init__.py` ainda combina a janela antiga com
+  vários mixins de uma IDE maior.
+- `hen-Ditor/_APP_/main_window/base.py` ainda constrói a composição antiga e
+  carrega menus, tarefas, debug, busca, configurações, Git e outros recursos
+  que não são necessários na primeira versão do editor.
+- `hen-Ditor/_APP_/main_window/mixin_abas.py`,
+  `mixin_layout.py` e `mixin_projeto.py` ainda contêm lógica antiga que pode
+  servir como referência, mas não deve ser reutilizada sem conferir todas as
+  dependências.
+- `hen-Ditor/_APP_/tab_widget.py` atualmente importa `CodeEditor` de
+  `_EDITOR_.Editor`. Para este produto, ele precisa usar
+  `_EDITOR_.Editor_Hein`.
+- `hen-Ditor/_EDITOR_/Editor_Hein/__init__.py` contém o `CodeEditor` que deve
+  ser mantido e agora é a única implementação de editor de texto aceita para
+  documentos `.hen`.
+- `hen-Ditor/_EDITOR_/Editor_Hein` já contém a lógica de autocomplete, realce,
+  busca, múltiplos cursores, gutter, estado por arquivo e salvamento que deve
+  ser aproveitada.
+- `hen-Ditor/_PAINEL_ESQUERDO_/FileTree/painel.py` contém `PainelArquivos`,
+  com árvore, abertura, criação, renomeação, exclusão, copiar/colar, Git local
+  e sinais de integração com IA.
+- `hen-Ditor/_PAINEL_DIREITO_/Ias/painel_ia.py` contém `PainelIA`, que deve
+  continuar sendo avaliado antes de qualquer tentativa de remoção.
+- `hen-Ditor/_APP_/terminal_tab_widget.py` contém `TerminalTabWidget` e deve
+  ser reutilizado sem mudanças nesta etapa.
+- `hen-Ditor/_PAINEL_ESQUERDO_/painel_abas_inferior.py` instancia
+  `PainelGitHub`; por isso ele não deve ser incluído automaticamente na nova
+  composição enquanto o requisito for Git local sem GitHub.
+- `_LOG_` ainda é dependência direta do editor, da IA e do terminal.
+- `_THREADS_` ainda é usado por File Tree, IA e componentes do editor.
+- `_UTILITARIOS_` deve ser preservado.
+- O `_NUCLEO_` ainda não foi auditado profundamente.
+- Nenhum arquivo de código foi removido nesta etapa do trabalho.
+- Nenhum pacote novo foi instalado nesta etapa.
+
+REGRA MAIS IMPORTANTE DE CONTINUIDADE
+--------------------------------------
+
+Não começar apagando pastas. Primeiro conferir o estado real do diretório e
+dos imports. O objetivo é simplificar a composição da aplicação, não destruir
+as dependências do editor antes de substituí-las.
+
+IMPLEMENTAÇÃO RECOMENDADA
+--------------------------
+
+### 1. Conferir antes de editar
+
+- Ler `replit.md`, se existir, e conferir as instruções atuais do projeto.
+- Conferir os arquivos e imports presentes no diretório; não confiar em
+  afirmações antigas deste plano.
+- Usar busca de imports e referências para descobrir dependências reais.
+- Confirmar que a janela antiga instancia GitHub antes de reutilizar qualquer
+  composição.
+
+### 2. Criar uma composição desktop enxuta
+
+Criar uma janela principal nova em um módulo próprio dentro de `_APP_`, sem
+usar diretamente todos os mixins da IDE antiga.
+
+Essa janela deve importar diretamente, depois de conferir os caminhos reais:
+
+- `PainelArquivos`;
+- `TabWidget`;
+- `Editor_Hein.CodeEditor`, por meio do `TabWidget`;
+- `PainelIA`;
+- `TerminalTabWidget`.
+
+Montar a janela com `QSplitter` ou composição equivalente:
+
+- File Tree à esquerda;
+- abas/editor no centro;
+- IA à direita;
+- terminal embaixo.
+
+Não instanciar `PainelGitHub`, `MainWindow` antiga, tarefas, debugger,
+executores ou componentes de IDE que não sejam necessários para o editor.
+
+### 3. Corrigir a integração das abas e do editor
+
+- Alterar `tab_widget.py` para usar `Editor_Hein.CodeEditor`.
+- Fazer a abertura de arquivo da árvore chegar às abas do editor.
+- Preservar o comportamento de preview em clique simples, se os sinais atuais
+  permitirem isso, e abertura definitiva em duplo clique ou ação explícita.
+- Garantir que abas modificadas, salvar, salvar como e fechar funcionem.
+- Restringir `CodeEditor.load_file`, `save_file`, `TabWidget` e File Tree a
+  `.hen`, recusando outras extensões de forma explícita.
+- O filtro de `save_file` deve oferecer somente `.hen` e salvar diretamente no
+  caminho já associado à aba.
+
+### 4. Conectar IA e terminal
+
+- Usar `PainelIA.set_editor`, `set_terminal_widget`, `set_nucleo` e
+  `set_projeto` somente depois de conferir as assinaturas e dependências.
+- Se a IA puder funcionar sem o `_NUCLEO_`, deixá-la desacoplada nesta primeira
+  composição; não criar uma conexão falsa.
+- Ligar o editor atual ao painel de IA.
+- Reutilizar `TerminalTabWidget` sem refatorar o terminal nesta etapa.
+- A execução de arquivo, se for mantida, deve abrir/usar o terminal existente,
+  não criar um segundo mecanismo de execução.
+
+### 5. Inicialização
+
+- Fazer `_APP_/__init__.py` ser o ponto de inicialização da aplicação desktop.
+- Simplificar `hen-Ditor/main.py` para delegar a inicialização ao `_APP_`.
+- Preservar somente a preparação de ambiente, logs, AppData e lock que ainda
+  forem necessários.
+- Não reintroduzir a antiga `MainWindow` como requisito da nova janela.
+
+### 6. Git local
+
+Manter somente operações locais e seguras no projeto, por exemplo status,
+diff, adicionar arquivos e commit local, se já houver suporte aproveitável.
+
+Não montar painel de GitHub e não manter ações de login, push, pull ou criação
+de repositório remoto. Qualquer ação destrutiva ou commit deve ser claramente
+identificado na interface.
+
+POLÍTICA DE LIMPEZA
+-------------------
+
+A limpeza só pode acontecer depois que a nova composição iniciar e os recursos
+necessários forem verificados.
+
+Pode ser removido individualmente, após rastrear imports, sinais e callbacks:
+
+- módulos de threads que não forem mais usados;
+- debugger/DAP;
+- tarefas;
+- executores;
+- componentes antigos de busca/configuração da IDE;
+- painel GitHub;
+- duplicações antigas do editor;
+- módulos de log visual que não forem dependência do editor, IA ou terminal.
+
+Não apagar uma pasta inteira por nome. Em especial, não apagar antes de
+rastrear:
+
+- `_EDITOR_`;
+- `_APP_`;
+- `_LOG_`;
+- `_THREADS_`;
+- `_UTILITARIOS_`;
+- `_NUCLEO_`;
+- `_TERMINAIS_`.
+
+O terminal não deve ser removido nem alterado nesta etapa. O `_UTILITARIOS_`
+deve ser preservado conforme a decisão do usuário. Só remover um utilitário
+quando a busca confirmar que não é usado por nenhuma parte mantida.
+
+VERIFICAÇÃO OBRIGATÓRIA
+-----------------------
+
+Antes de declarar a etapa concluída:
+
+1. Verificar imports e sintaxe dos arquivos alterados.
+2. Confirmar que `main.py` chama o `_APP_`.
+3. Confirmar que o `TabWidget` usa `Editor_Hein.CodeEditor`.
+4. Testar abertura, edição, salvamento e salvamento como de `.hen`, além da
+   recusa clara de `.txt`, `.md`, `.py`, `.json` e outra extensão comum.
+5. Testar criação, renomeação e seleção pela File Tree.
+6. Confirmar que o painel de IA recebe o editor atual.
+7. Confirmar que o terminal continua sendo o terminal existente.
+8. Confirmar que nenhum painel ou ação do GitHub é criado.
+9. Confirmar que logs/AppData necessários continuam disponíveis.
+10. Iniciar a aplicação desktop em um ambiente com PySide6 e registrar erros
+    reais, sem declarar sucesso apenas porque a compilação passou.
+
+No ambiente auditado anteriormente, o shell não tinha `PySide6`, `pygments`,
+`GitPython`, `faiss` nem `langgraph`. Essa informação deve ser conferida no
+ambiente atual antes de instalar qualquer coisa. Se for necessário instalar
+dependência, usar o procedimento de gerenciamento de pacotes do projeto e
+registrar a decisão; não trocar a aplicação por um mock ou por uma aplicação
+web.
+
+PONTO DE CONTINUIDADE
+---------------------
+
+A próxima IA deve começar conferindo o código atual, não repetindo uma
+auditoria geral e não executando limpeza destrutiva. A primeira entrega
+esperada é uma janela desktop enxuta funcionando com File Tree, editor
+`Editor_Hein`, painel de IA e terminal. Só depois devem ser avaliadas remoções
+individuais.
+
+Se os créditos acabarem, a instrução resumida é:
+
+“Continue a partir deste arquivo. O objetivo é um editor desktop PySide6, não
+um app web. O plano anterior estava errado ao afirmar que tudo já havia sido
+apagado; as pastas antigas ainda existem e nenhuma remoção ampla está
+autorizada. Crie uma composição nova e enxuta dentro de `_APP_`, use
+`Editor_Hein.CodeEditor`, aceite somente arquivos `.hen`, preserve File Tree,
+IA, terminal, Git local, logs necessários e `_UTILITARIOS_`, não inclua
+GitHub, não altere o terminal e não apague pastas sem rastrear imports.”

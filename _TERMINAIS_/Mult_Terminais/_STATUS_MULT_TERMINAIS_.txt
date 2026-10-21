@@ -1,0 +1,100 @@
+# 📁 _TERMINAIS_/Mult_Terminais/_STATUS_MULT_TERMINAIS_.txt
+
+════════════════════════════════════════════════════════════════════════════════
+  MÓDULO: _TERMINAIS_/Mult_Terminais
+  Documento: _STATUS_MULT_TERMINAIS_.txt
+  Última atualização: 2026-07-08
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. IMPLEMENTADO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ── ExecutorTerminal (terminal_executor.py) ──────────────────────────────
+
+  ✅ Estado 'sem_ferramenta':
+     - Label de aviso com nome da linguagem
+     - Botão "Como instalar" (abre URL de instalação do executores.json)
+     - Exibido quando gerenciador_executores não encontra o executável
+
+  ✅ Estado 'pronto':
+     - Campo de comando editável (pré-preenchido com comando do executores.json)
+     - Botão ▶ Run — inicia QProcess com comando + arquivo
+     - Botão ■ Stop — chama QProcess.terminate()
+
+  ✅ Execução via QProcess (não-bloqueante):
+     - readyReadStandardOutput → _ao_stdout() → output colorido em tempo real
+     - readyReadStandardError  → _ao_stderr() → texto em vermelho
+     - finished(int, QProcess.ExitStatus) → exibe "Processo finalizado (código N)"
+
+  ✅ Reutilização de aba:
+     - TerminalTabWidget.abrir_executor_terminal() verifica isinstance(w, ExecutorTerminal)
+       and w._nome == nome_linguagem antes de criar nova aba
+
+  ── ExecutorExplorer (executor_explorer.py) ──────────────────────────────
+
+  ✅ _LinhaExecutor por linguagem:
+     - Nome + status ✓/✗ via shutil.which
+     - Campo de comando editável com returnPressed → _salvar()
+     - Botão "Salvar" + "Verificar" + "Como instalar" (condicional)
+
+  ✅ _carregar() via exec_global().linguagens() — carrega executores.json
+  ✅ _verificar_tudo() — re-checa todas as linguagens ao mesmo tempo
+  ✅ _recarregar_se_necessario() — compatível com padrão de reutilização de aba
+  ✅ Roteamento: main_window._ao_trocar_aba_editor_json → ARQUIVO_EXECUTORES
+
+  ── executores.json ──────────────────────────────────────────────────────
+
+  ✅ Entradas configuradas: JavaScript, TypeScript, Shell, Lua, Makefile
+
+  ── Integração com main_window.py ────────────────────────────────────────
+
+  ✅ F1 silencioso: provider.can_run == False → return sem ação (2 pontos)
+  ✅ F1 ativo: provider.can_run == True → abrir_executor_terminal(name, arquivo)
+  ✅ Imports atualizados: _TERMINAIS_.Mult_Terminais.terminal_executor (×2)
+     e _TERMINAIS_.Mult_Terminais.executor_explorer (×1)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. PENDENTE / PRÓXIMA ORDEM  🔲
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  PRIORIDADE MÉDIA:
+  🔲 Input interativo (stdin) para Shell e Lua:
+     Scripts que chamam readline() / input() travam o QProcess hoje.
+     Fase futura: widget de input na barra inferior do ExecutorTerminal
+     (QLineEdit + Enter → QProcess.write(texto + '\n'))
+
+  🔲 fechar_aba() seguro para ExecutorTerminal:
+     Verificar se TerminalTabWidget.fechar_aba() já chama
+     QProcess.terminate() + waitForFinished() para ExecutorTerminal,
+     ou se ainda só trata PainelDebug.
+
+  PRIORIDADE BAIXA:
+  🔲 Histórico de execuções por linguagem (últimos N comandos)
+  🔲 Ambiente de execução configurável (variáveis PATH/env por linguagem)
+  🔲 Debug para JavaScript (node --inspect + protocolo CDP/DAP)
+     — dependência externa: sem estimativa de prazo
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. HISTÓRICO DE SESSÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+--- (sessão anterior a 2026-07-08): Criação de ExecutorTerminal e ExecutorExplorer ---
+✅ terminal_executor.py: ExecutorTerminal completo — dois estados, QProcess,
+   output colorido, botão stop, campo de comando editável
+✅ executor_explorer.py: ExecutorExplorer completo — _LinhaExecutor,
+   _carregar(), _verificar_tudo(), _recarregar_se_necessario()
+✅ executores.json: entradas JavaScript, TypeScript, Shell, Lua, Makefile
+✅ F1 silencioso implementado em main_window.py (dois pontos de return)
+
+--- 2026-07-08 (esta sessão): Reorganização para Mult_Terminais/ ---
+✅ Pasta _TERMINAIS_/Mult_Terminais/ criada
+✅ terminal_executor.py e executor_explorer.py movidos para Mult_Terminais/
+✅ __init__.py criado exportando ExecutorTerminal + ExecutorExplorer
+✅ Arquivos originais em _TERMINAIS_/ removidos (sem shims)
+✅ Imports atualizados em terminal_tab_widget.py (×2) e main_window.py (×1)
+✅ _DOC_MULT_TERMINAIS_.txt e _STATUS_MULT_TERMINAIS_.txt criados
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

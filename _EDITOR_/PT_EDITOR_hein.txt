@@ -1,0 +1,373 @@
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PT_EDITOR_hein.txt — Planejamento Técnico: Editor de Notas + _BarraSalto
+  hein IDE · Python + PySide6 · 100% desktop
+  Última revisão: 2026-07-20 (Sessão 3 — fixes visuais Editor_Hein)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REGRAS GERAIS (válidas para TODO este arquivo)
+───────────────────────────────────────────────
+- Mostrar ANTES e DEPOIS ao entregar código — nunca o arquivo inteiro.
+- Menor alteração possível — nunca tocar no que funciona.
+- Todo processamento pesado em QThread — nunca na UI thread.
+- Sem bibliotecas externas — PySide6 + stdlib Python (exceto qtawesome já em uso).
+- Não implementar nada sem instrução explícita.
+- Em caso de dúvida: perguntar antes de alterar.
+- As três VENVs nunca devem ser confundidas:
+    venv da IDE      → D:\_PROJETOS\Editor_Terminal\.venv\
+    venv do usuário  → <projeto>\.venv\
+    venv_hein        → %APPDATA%\hein\_venv_hein_\
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  VISÃO GERAL DO PROJETO — hein IDE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+O projeto é uma IDE 100% desktop, construída em Python + PySide6. Não tem
+componente web, mobile ou servidor. O usuário a executa localmente.
+
+ESTRUTURA DO MÓDULO _EDITOR_
+─────────────────────────────
+
+  _EDITOR_/
+  ├── Editor/              ← Editor de código principal (CodeEditor)
+  │     __init__.py        ← CodeEditor (QPlainTextEdit + mixins, 1651 linhas)
+  │     _barra_salto.py    ← 3 botões ⤒/⊟/⤓ sobrepostos no canto do viewport
+  │     _code_lens.py      ← overlay "· N usos" + cursor customizado
+  │     _cursor_personalizado.py ← formas/piscar/animação do cursor
+  │     _handle_outline.py ← alça de redimensionamento do painel outline
+  │     _inline_diff_hunk.py ← diff git embutido no viewport
+  │     _scroll_bar_fold.py  ← marcas de fold na scrollbar
+  │
+  └── Editor_Hein/         ← Editor de arquivos .hein (folha de caderno)
+        __init__.py         ← exporta EditorHein
+        editor_hein.py      ← EditorHein (QWidget container — interface IDE)
+        editor_caderno.py   ← _EditorCaderno + _DestaqueSintaxeHein
+        gutter_hein.py      ← _GutterHein (fold + números + linha vermelha)
+        barra_formatacao_hein.py ← _BarraFormatacaoHein (botões laterais)
+        autocomplete_arvore.py   ← AutocompleteArvore (nomes de pasta/arquivo)
+        estrutura_projeto.py     ← varredura + sincronização da árvore
+        conversao_md.py          ← exporta .hein → .md
+
+ARQUITETURA DO Editor_Hein
+──────────────────────────
+
+  EditorHein (QWidget)
+  ├── _EditorCaderno (QPlainTextEdit)
+  │     paintEvent: 3 fases —
+  │       Fase 1 (antes do texto): fundo creme + pautas + destaque H1
+  │       Fase 2: super().paintEvent() → texto nativo Qt
+  │       Fase 3 (overlay): data no canto direito da linha de título
+  │     _aplicar_fundo(): 4 camadas para vencer tema escuro (ver abaixo)
+  │     set_cor_fundo / set_cor_texto / set_cor_linha
+  │     set_zoom / _aplicar_formato_titulo_bloco
+  │     Enter inteligente (recuo 4sp dentro de H2/H3)
+  │
+  │     └── _GutterHein (QWidget, filho de _EditorCaderno)
+  │           Fundo creme explícito (fillRect — vence IDE)
+  │           Pautas horizontais de x=0 até a linha vermelha
+  │           Setas ▶/▼ de fold (H1/H2/H3)
+  │           Numeração de linha (H1 e data NÃO recebem número)
+  │           Linha vermelha de margem na borda direita
+  │           Toggle fold por clique
+  │
+  ├── _BarraFormatacaoHein (QWidget, 72px fixo à direita)
+  │     campo tamanho + botão Fonte (QFontDialog)
+  │     ícone fa5s.fill-drip → cor de fundo (caderno.json)
+  │     ícone fa5s.font      → cor do texto
+  │     ícone fa5s.grip-lines → cor das pautas + números
+  │     ### Top / - Lista / [ ] Tar (prefixos de linha)
+  │     Cor (highlight !!#rrggbb) / **Neg** / [[Lnk]] / {Ocult} / `Cod`
+  │     .md (exporta via conversao_md.py)
+  │
+  └── _DestaqueSintaxeHein (QSyntaxHighlighter)
+        H1 → fonte +4pt + negrito + cor título escura
+        Data (bloco 1) → invisível (mesma cor do fundo)
+        H2 ## → negrito azul  /  H3 ### → âmbar
+        **negrito** / [[link]] / {oculto} / `code` / !!#rrggbb
+
+FORMATO DO ARQUIVO .hein
+─────────────────────────
+  Texto puro (UTF-8), estruturado por marcadores de cabeçalho Markdown-like:
+
+  # Nome da nota           ← bloco 0: H1, título (sem número de linha)
+  20 — julho               ← bloco 1: data (sem número de linha)
+                           ← bloco 2+: conteúdo livre, com números de linha
+  ## pasta/                ← pasta do projeto
+      ### arquivo.py       ← arquivo do projeto
+          conteúdo...
+
+  O cabeçalho (blocos 0 e 1) é gerado automaticamente na criação.
+  A estrutura H2/H3 é sincronizada com o projeto via sincronizar_estrutura().
+
+COMO AS CORES FUNCIONAM (crítico — ler antes de mexer)
+──────────────────────────────────────────────────────
+  O tema da IDE é escuro. O caderno precisa ser sempre claro. Para vencer o
+  tema, _aplicar_fundo() usa 4 camadas empilhadas:
+
+  CAMADA 1 — document().rootFrame().setFrameFormat(ff) com ff.setBackground(cor)
+    → Preenche as áreas de margem do QTextDocument (espaço entre blocos,
+      padding de QTextBlockFormat). Sem isso, qualquer bloco com topMargin
+      ou bottomMargin aparece com fundo preto herdado do tema da IDE.
+
+  CAMADA 2 — document().setDefaultCharFormat(char_fmt) com setForeground(cor)
+    → Define a cor de texto para caracteres SEM formato explícito do
+      highlighter. É ESTE canal que o renderer Qt usa para texto normal.
+      QPalette.Text não é suficiente para isso.
+
+  CAMADA 3 — viewport().setStyleSheet("background-color: ...; color: ...;")
+    → Vence qualquer stylesheet pai herdada da IDE. CSS tem prioridade
+      sobre QPalette quando há stylesheet no widget.
+
+  CAMADA 4 — viewport().setPalette(pal) + setAutoFillBackground(True)
+    → Fallback para seleção de texto, scrollbar, highlight de seleção.
+
+  O _GutterHein vence o tema escuro por paintEvent:
+    painter.fillRect(event.rect(), self._cor_fundo)
+  Essa linha preenche o gutter antes de qualquer outro desenho.
+
+  aplicar_tema() ignora completamente o dicionário de tema da IDE.
+  Só aceita chaves com prefixo "caderno_" (ex: "caderno_fundo").
+  Nenhum tema atual tem essas chaves, então o caderno sempre inicia
+  com as cores padrão (#FDFBF7 fundo, #1A1A1A texto, #E0DCD3 pautas).
+
+PERSISTÊNCIA DE CORES
+──────────────────────
+  • Cor de fundo → PROJECT/.hein/caderno.json  → {"cor_fundo": "#rrggbb"}
+  • Cor de fundo sem projeto → ARQUIVO.heinrc  → {"cor_fundo": "#rrggbb"}
+  • Cor de texto e cor de linha: ainda NÃO persistem — resetam ao fechar.
+    (pendente de implementação — ver fila abaixo)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BLOCO 1 — _BarraSalto  (correção / finalização)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.1  _BarraSalto — posicionamento não acompanha resize do editor
+
+ARQUIVO: _EDITOR_/Editor/_barra_salto.py
+         _EDITOR_/Editor/__init__.py
+
+COMPORTAMENTO ESPERADO:
+  Os 3 botões ⤒ / ⊟ / ⤓ no canto superior direito do viewport devem sempre
+  estar visíveis e corretamente posicionados — inclusive ao redimensionar a
+  janela, ao abrir/fechar o outline ou ao mostrar/ocultar a RéguaErros.
+
+COMPORTAMENTO ATUAL (BUG):
+  `posicionar()` é chamado apenas uma vez em `_configurar()`. Após isso,
+  nenhum evento de resize ou mudança de layout re-chama `posicionar()`,
+  então os botões ficam deslocados ou sobrepostos ao outline/régua.
+
+CAUSA RAIZ:
+  __init__.py, método `_configurar()`:
+      self._barra_salto = _BarraSalto(self)
+      self._barra_salto.posicionar()   ← chamada única, sem reconexão
+
+  Falta override de resizeEvent e chamada em _atualizar_geometria_outline.
+
+ONDE IMPLEMENTAR:
+  _EDITOR_/Editor/__init__.py
+    → resizeEvent(self, event): adicionar self._barra_salto.posicionar()
+    → _atualizar_geometria_outline: adicionar self._barra_salto.posicionar()
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução ]
+
+─────────────────────────────────────────────────────────────────────────────
+
+## 1.2  _BarraSalto — tema não é atualizado quando o tema da IDE muda
+
+ARQUIVO: _EDITOR_/Editor/_barra_salto.py
+
+COMPORTAMENTO ESPERADO:
+  Quando o usuário troca o tema da IDE, a _BarraSalto deve atualizar cores.
+
+CAUSA RAIZ:
+  Nenhuma conexão entre o sinal de troca de tema e _barra_salto._aplicar_tema().
+
+ONDE IMPLEMENTAR:
+  _EDITOR_/Editor/__init__.py — em atualizar_tema(self, tema):
+      adicionar: self._barra_salto._aplicar_tema()
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BLOCO 2 — Editor_Hein — STATUS E PENDÊNCIAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## IMPLEMENTADO ✅ (tudo que já existe e funciona)
+
+  editor_hein.py — EditorHein (QWidget container):
+    [✓] Interface IDE completa: load_file, save_file, is_modified, set_projeto,
+        ir_para_linha, encerrar_threads_bg, atualizar_tema, set_zoom
+    [✓] Sinais: arquivo_salvo, navegar_arquivo, solicitar_ia,
+        arquivo_exportado, erros_atualizados
+    [✓] Auto-cabeçalho em arquivo novo (# Nome + "DD — mês")
+    [✓] Persistência de posição/scroll por arquivo (EstadoEditor)
+    [✓] ThreadDiffGutter (encerrada corretamente antes de removeTab)
+    [✓] Stubs de compatibilidade completos (outline, code lens, etc.)
+    [✓] aplicar_tema: ignora tema escuro — usa sempre cores padrão do caderno
+
+  editor_caderno.py — _EditorCaderno (QPlainTextEdit):
+    [✓] Fundo creme #FDFBF7 forçado via 4 camadas (vence IDE escura)
+    [✓] Cor de texto #1A1A1A via document().setDefaultCharFormat()
+    [✓] Pautas horizontais em todas as linhas (fases 1 e "pós-texto")
+    [✓] Destaque de fundo #F0EBE0 na linha H1
+    [✓] Cabeçalho (H1) visualmente mais alto (topMargin=22 + bottomMargin=16)
+        com background explícito no QTextBlockFormat (sem artefato preto)
+    [✓] Data exibida no canto direito da linha H1 (overlay Fase 3)
+    [✓] Enter inteligente: recuo 4sp dentro de H2/H3
+    [✓] set_cor_fundo / set_cor_texto / set_cor_linha (botões da barra)
+    [✓] aplicar_tema: ignora IDE; aceita só chaves "caderno_*"
+
+  gutter_hein.py — _GutterHein:
+    [✓] Fundo creme explícito (fillRect — vence tema escuro)
+    [✓] Pautas horizontais no gutter (de x=0 até a linha vermelha)
+    [✓] Pautas nos espaços vazios abaixo do último bloco
+    [✓] Setas ▶/▼ de fold para H1/H2/H3
+    [✓] Numeração de linha (H1 e data SEM número; começa na linha seguinte)
+    [✓] Linha vermelha de margem na borda direita
+    [✓] Toggle fold por clique na faixa FOLD_W
+    [✓] set_cores() aceita cor_pauta (sincroniza com _EditorCaderno)
+    [✓] _COR_NUMERO_PADRAO = #E0DCD3 (igual à pauta — numeros na mesma cor)
+
+  barra_formatacao_hein.py — _BarraFormatacaoHein (72px):
+    [✓] Zero emojis — todos removidos
+    [✓] import qtawesome as qta
+    [✓] Botão Fonte + campo de tamanho
+    [✓] fa5s.fill-drip → cor de fundo da folha (salva em caderno.json)
+    [✓] fa5s.font      → cor do texto (set_cor_texto no _EditorCaderno)
+    [✓] fa5s.grip-lines → cor das pautas + números (set_cor_linha)
+    [✓] ### Top / - Lista / [ ] Tar (prefixos)
+    [✓] Cor inline / **Neg** / [[Lnk]] / {Ocult} / `Cod` / .md
+    [✓] _escolher_cor_texto() e _escolher_cor_linha() implementados
+
+  estrutura_projeto.py:
+    [✓] varrer_arvore: varre filesystem do projeto
+    [✓] gerar_folha_nova: monta cabeçalho + árvore H2/H3 para arquivo novo
+    [✓] sincronizar_estrutura: adiciona H2/H3 ausentes, remove obsoletos,
+        nunca apaga conteúdo do usuário
+
+  conversao_md.py:
+    [✓] converter_hein_para_md: .hein → .md (exportação)
+
+  autocomplete_arvore.py:
+    [✓] AutocompleteArvore: autocomplete de nomes de pasta/arquivo do projeto
+
+─────────────────────────────────────────────────────────────────────────────
+
+## PENDENTE — SEM INSTRUÇÃO AINDA 🔲
+
+  P-01  Persistência de cor de texto e cor de linha
+        Atualmente só cor de fundo é salva em caderno.json.
+        As outras duas resetam quando o editor é fechado.
+        ONDE: editor_hein.py (_salvar_config_caderno / _carregar_config_caderno)
+              adicionar "cor_texto" e "cor_linha" no JSON
+
+  P-02  sincronizar_estrutura roda na UI thread (bug de performance)
+        Chamado via QTimer.singleShot(300, ...) — mas a função em si
+        é síncrona e pode travar a UI em projetos grandes.
+        ONDE: estrutura_projeto.py → transformar em QThread
+              editor_hein.py → conectar sinal de conclusão
+
+  P-03  ThreadDiffGutter: sinais não chegam ao _GutterHein
+        O thread roda mas o resultado nunca é pintado no gutter do caderno.
+        ONDE: editor_hein.py → conectar diff_pronto ao _GutterHein.set_git_changes
+              gutter_hein.py → implementar pintura das marcas git
+
+  P-04  Ctrl+Click sobre [[wikilink]] → navegar para arquivo
+        ONDE: editor_caderno.py → mousePressEvent + lógica de extração de [[link]]
+              editor_hein.py → emitir navegar_arquivo
+
+  P-05  Autocomplete word-based para texto livre (palavras do próprio documento)
+        Diferente do AutocompleteArvore (que completa nomes de pasta/arquivo).
+        ONDE: editor_caderno.py ou novo autocomplete_palavra.py
+
+  P-06  F4 → modo leitura (sem gutter, margens mais largas, sem formatação)
+        ONDE: editor_hein.py + _EditorCaderno
+
+  P-07  Ctrl+Shift+T → inserir data atual como linha na posição do cursor
+        ONDE: editor_hein.py ou editor_caderno.py (keyPressEvent)
+
+─────────────────────────────────────────────────────────────────────────────
+
+## BUGS CONHECIDOS / COMPORTAMENTOS A OBSERVAR ⚠️
+
+  B-01  [OBSERVAR] _DestaqueSintaxeHein: importado via fallback em editor_hein.py
+        A classe real está em editor_caderno.py. O fallback de
+        RealceSintaxeHein (Mult_Linguas.Hein) não existe nesta versão,
+        mas o try/except garante silêncio. Não é bug — só saber que existe.
+
+  B-02  [OBSERVAR] BarraStatus: importação opcional (try/except).
+        Se falhar na instanciação não quebra o editor.
+
+  B-03  [VERIFICAR] Cor do texto muda via QColorDialog mas o highlighter
+        _DestaqueSintaxeHein aplica cores explícitas (foreground) em H1, H2, H3,
+        datas, etc. Para esse texto, a cor padrão do documento não tem efeito.
+        Só o texto de corpo livre (sem sintaxe) muda de cor.
+        Isso pode ser o comportamento esperado, mas precisa de confirmação.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FILA DE TRABALHO — O QUE FALTA FAZER (por prioridade)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Legenda: [ ] pendente   [✓] feito   [~] em andamento
+
+─── BLOCO 1 · _BarraSalto ────────────────────────────────────────────────────
+
+  [ ] IMP-01  1.1 — posicionamento não acompanha resize
+              Conectar resizeEvent + _atualizar_geometria_outline
+
+  [ ] IMP-02  1.2 — tema não atualiza
+              Conectar _barra_salto._aplicar_tema() em atualizar_tema()
+
+─── BLOCO 2 · Editor_Hein — correções visuais ────────────────────────────────
+
+  [✓] IMP-03  Trocar emojis da barra por ícones qtawesome
+  [✓] IMP-04  Botão cor do texto (novo)
+  [✓] IMP-05  Botão cor da linha (pautas + números juntos)
+  [✓] IMP-06  Fundo creme funciona independente do tema da IDE
+  [✓] IMP-07  Cor do texto muda (document().setDefaultCharFormat)
+  [✓] IMP-08  Artefato preto no cabeçalho eliminado (rootFrame + blockFormat.setBackground)
+  [✓] IMP-09  Cabeçalho visualmente mais alto (topMargin=22 + bottomMargin=16)
+  [✓] IMP-10  Pautas cruzam o gutter (de x=0 à linha vermelha)
+  [✓] IMP-11  Números de linha: H1 e data sem número; corpo começa a partir deles
+  [✓] IMP-12  Margem direita removida (viewport margin = 0 à direita)
+
+─── BLOCO 2 · Editor_Hein — pendente ────────────────────────────────────────
+
+  [ ] P-01  Persistir cor de texto e cor de linha em caderno.json
+  [ ] P-02  sincronizar_estrutura → mover para QThread
+  [ ] P-03  Conectar ThreadDiffGutter ao _GutterHein (marcas git)
+  [ ] P-04  Ctrl+Click [[wikilink]] → navegar_arquivo
+  [ ] P-05  Autocomplete word-based (palavras do documento)
+  [ ] P-06  F4 → modo leitura
+  [ ] P-07  Ctrl+Shift+T → inserir data
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  HISTÓRICO DE SESSÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sessão 1 (2026-07-20):
+  Mapeamento inicial do projeto. Leitura de todos os arquivos do Editor_Hein.
+  Criação deste documento. Identificação dos bugs visuais do caderno.
+
+Sessão 2 (2026-07-20):
+  Leitura dos arquivos originais editor_hein.py e barra_formatacao_hein.py
+  (havia uma versão antiga incorreta). Reescrita do __init__.py e separação
+  em múltiplos arquivos (editor_caderno.py, gutter_hein.py, etc.).
+
+Sessão 3 (2026-07-20):
+  Implementações IMP-03 a IMP-12:
+  - Emojis → ícones qtawesome (barra_formatacao_hein.py)
+  - Botões cor do texto + cor da linha (novos)
+  - Fix do fundo preto: stylesheet CSS no viewport vence tema da IDE
+  - Fix da cor do texto: document().setDefaultCharFormat()
+  - Fix do artefato preto: rootFrame.setFrameFormat + blockFormat.setBackground
+  - Pautas cruzam o gutter: _GutterHein.paintEvent desenha pautas de x=0
+  - Cabeçalho mais alto: topMargin=22 + bottomMargin=16 + background explícito
+  - Números de linha: H1 e data sem número (revertido erro da sessão)
+  - Margem direita removida
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

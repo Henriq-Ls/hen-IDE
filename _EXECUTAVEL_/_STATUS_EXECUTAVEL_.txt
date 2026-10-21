@@ -1,0 +1,26 @@
+# _EXECUTAVEL_ — estado atual
+
+Última atualização: 2026-10-19
+
+## Implementado
+
+- Configuração JSON por projeto com gravação atômica em `.hein/executavel/`.
+- Aba Executável no painel inferior e abertura/reutilização do Explorer central.
+- Análise de dependências, imports, estrutura e dados do projeto.
+- Build local PyInstaller executado na `.venv` do projeto.
+- Workflow GitHub Actions e `build_ci.py` autônomo gerados no projeto.
+- Release usa `config_github()` e `GerenciadorGit.executar_autenticado()`.
+- Operações de release não colocam token em URL/argumentos, não usam force-push
+  e recusam sobrescrever tags existentes.
+
+## A validar
+
+- Build local completo no Windows, incluindo PyInstaller e version resource.
+- Release de teste em repositório GitHub com sessão real da IDE.
+- Build no Actions para projeto com dependências específicas do Windows.
+
+## Limites
+
+- O build local produz o formato do sistema operacional onde a IDE está rodando.
+- O workflow gerado atualmente produz release Windows.
+- Projetos precisam ter uma `.venv` própria para build/release.

@@ -1,0 +1,71 @@
+# 📁 _LOG_/_STATUS_LOG_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _LOG_ — STATUS DO MÓDULO
+  Última atualização: 2026-07-28 (Sessão 43: iniciar_worker() — fix 0x8001010d)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPLEMENTADO  ✅
+────────────────
+• _SistemaLog com API completa: info, ok, aviso, erro, excecao, debug, crash, fault
+• Inicialização em duas fases:
+    Fase 1 (__init__, import-time): abre hein.log, escreve cabeçalho,
+    ativa faulthandler — sem iniciar thread
+    Fase 2 (iniciar_worker(), após QApplication): inicia _worker_disco
+• _worker_disco: fila + handle persistente (line-buffered);
+  get(timeout=0.5) + while self._ativo — saída limpa no shutdown
+• log.encerrar() + app.aboutToQuit — encerramento determinístico garantido
+• hein.log: arquivo operacional único, consolidando logs normais, crash Python,
+  fault nativo e stderr do .exe frozen em ordem cronológica
+• hein_workers.log: diagnóstico estruturado separado, no mesmo diretório
+  AppData, para não misturar eventos técnicos com o log operacional
+• faulthandler ativado em __init__ (sem thread — seguro antes de QApplication)
+• _arq_direto: handle persistente para faulthandler e SIGTERM (Linux/macOS)
+• log_signal.nova_entrada (Signal): ponte Qt thread-safe entre log.py e PainelLogs
+• PainelLogs: exibição em tempo real com buffer de 80ms
+• log.caminho_arquivo() + log.arquivo_direto
+• rotacionar_na_inicializacao(): zera hein.log a cada nova sessão
+• RPC_E_CHANGED_MODE (0x8001010d) eliminado: worker inicia após QApplication()
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em desenvolvimento no momento)
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+─────────────────────────────
+1. Tematizar cores dos badges do PainelLogs (INFO/OK/AVISO/ERRO) via tema.json
+   — atualmente hardcodadas em painel_logs.py (#569cd6 / #4ec994 / #e2a93f / #e05252)
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• (nenhum problema conhecido no momento)
+
+REGRAS CRÍTICAS DESTE MÓDULO
+─────────────────────────────
+• NUNCA usar print() em código da IDE — sempre log.*()
+• NUNCA abrir hein.log manualmente fora de _LOG_/log.py
+• O diagnóstico de workers usa hein_workers.log no AppData; não criar log
+  de diagnóstico na raiz do projeto
+• hein_workers.log é zerado no início de cada processo e fechado no término;
+  não acumula sessões anteriores
+• NUNCA chamar log.iniciar_worker() antes de QApplication() — causa 0x8001010d
+• NUNCA chamar log.iniciar_worker() mais de uma vez
+• _worker_disco usa handle persistente — não reabrir o arquivo a cada linha
+• encerrar() DEVE estar conectado a app.aboutToQuit
+• crash/fault escrevem DIRETO no arquivo (sem fila) — correto para cenários
+  de encerramento onde a fila pode não ser processada
+
+
+--- 2026-07-28 Sessão 43: iniciar_worker() — fix definitivo do 0x8001010d ---
+✅ log.py: _worker_disco NÃO inicia mais em __init__
+✅ log.py: novo método iniciar_worker() — inicia o worker sob demanda
+✅ main.py: log.iniciar_worker() chamado logo após app = QApplication()
+   Com o Qt criado, o COM do Windows está estável; o worker não recebe 0x8001010d
+✅ hein.log mantido como arquivo operacional único
+✅ hein_workers.log separado por nome, no mesmo AppData, para diagnóstico
+✅ Mensagens enfileiradas antes de iniciar_worker() não se perdem
+
+--- 2026-07-28 Sessão 41: Complemento Rodada 8 — shutdown crash fix ---
+✅ log.py: encerrar() adicionado — self._ativo = False + self._fila.put(None)
+✅ main.py: app.aboutToQuit.connect(log.encerrar)
+✅ _worker_disco: get(timeout=0.5) — saída limpa no shutdown

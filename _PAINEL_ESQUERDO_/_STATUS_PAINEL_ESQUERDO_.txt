@@ -1,0 +1,146 @@
+# 📁 _PAINEL_ESQUERDO_/_STATUS_PAINEL_ESQUERDO_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — Módulo _PAINEL_ESQUERDO_
+  Última atualização: 2026-10-19 (aba Executável + staging visual)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+────────────────
+• FileTree/ — pacote com 5 módulos (ver _STATUS_FILETREE_.txt):
+    __init__.py / _auxiliares.py / _workers.py / _modelo.py / painel.py
+• QTreeView + _IconProvider (QFileSystemModel) + _ProxyOrdem
+• Ícones por extensão com suporte a packs de ícones (_PACK_ATIVO)
+• Cache de ícones (_cache_icones) em _auxiliares
+• Ícones especiais: .venv → package-variant, .hein → folder-cog #7E57C2
+• .venv e .hein pinados no topo via _ProxyOrdem._PRIORIDADE
+• Indicadores de status Git por ARQUIVO via _WorkerGit(QObject) em QThread
+• Indicadores de status Git por PASTA — herdam status mais crítico dos filhos:
+  deletado(3) > modificado/renomeado(2) > novo(1)
+  Implementado em _WorkerGit.rodar() após o loop de arquivos
+• Modo staging integrado à FileTree:
+    Ativação: sinal abrir_painel_git (botão "Main" do Git) via base.py
+     Desativação: ao trocar para aba Executável (PainelAbasInferior._trocar)
+    Checkboxes nativos Qt (PE_IndicatorCheckBox) em arquivos rastreáveis
+    Clique em arquivo rastreável togla checkbox (não abre arquivo)
+    Pastas expandem/colapsam normalmente mesmo em staging
+    Botões "✓ Marcar tudo" / "□ Desmarcar tudo" na barra_acoes (ocultos fora do staging)
+    arquivos_staging_selecionados() → lista de caminhos marcados
+• PainelAbasInferior.conectar_painel_arquivos(painel):
+    Registra ref ao PainelArquivos; _trocar(indice != 0) chama sair_modo_staging()
+• Rename inline via _tree.edit() + model.fileRenamed → _ao_renomear_inline
+• Apagar → .hein/lixeira/ com Ctrl+Z e restauração individual
+• Drag-and-drop InternalMove habilitado
+• barra_acoes (QHBoxLayout) separada entre MenuRecenteProjeto e árvore:
+    ajuda / expandir tudo / colapsar tudo / filtrar /
+    Marcar tudo / Desmarcar tudo (últimos dois ocultos fora do staging)
+• Indentação 12px; QShortcuts Ctrl+Alt+± removidos do FileTree
+• Foco devolvido à árvore após clique simples (QTimer.singleShot → setFocus)
+  — garante que Delete/Ctrl+C/V/Z funcionem após o editor trocar de aba
+
+• Menu de contexto completo via heinContextMenu:
+    Executar (.py), Novo Arquivo, Nova Pasta,
+    Copiar, Colar, Duplicar,
+    Copiar Caminho (→ clipboard do sistema),
+    Renomear, Apagar, Desfazer,
+    Mostrar no Explorador, Enviar para IA,
+    Abrir no Navegador (.html), Adicionar ao Git,
+    Restaurar/Esvaziar Lixeira
+    (itens desabilitados condicionalmente: Colar, Desfazer, Duplicar,
+     Copiar Caminho quando clipboard vazio / histórico vazio / sem seleção)
+
+• Atalhos de teclado:
+    F2 / Shift+F3 → renomear
+    Shift+F1      → novo arquivo
+    Shift+F2      → nova pasta
+    Delete        → apagar (lixeira)
+    Ctrl+C        → copiar (clipboard interno)
+    Ctrl+V        → colar
+    Ctrl+Z        → desfazer
+    Ctrl+D        → duplicar
+
+• Sinais: arquivo_selecionado, arquivo_clicado_simples,
+          arquivo_enviado_para_ia, executar_arquivo
+• revelar_arquivo(): expande todos os pais + scrollTo + select
+• set_projeto(): nome truncado + tamanho total em MB
+• _filtrar_arvore(): expandAll + nameFilters; colapsa ao limpar
+• trocar_pack_icones(): recria model/proxy/delegate do zero
+• Tema com gradiente 3 pontos + hot-reload via atualizar_tema()
+• PainelAbasInferior com 2 abas (Git e Executável)
+• Aba Executável grava configuração por projeto e abre ExecutavelExplorer
+• Release usa a sessão existente da aba Git; não põe token em URL/argumentos,
+  não sobrescreve tags nem usa force-push
+• _BarraAbas com linha de borda inferior via QPainter +
+  hot-reload de tema via QEvent.Type.StyleChange
+• AbaInferiorBotao: botão estilizado com cantos arredondados
+
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em andamento ativo)
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+──────────────────────────────
+1. Verificar se _atualizar_tamanho_venv() funciona na prática
+   (setData(DisplayRole) pode ser ignorado pelo _IconProvider)
+2. Confirmar drag-and-drop ao arrastar para fora da raiz do projeto
+3. "Abrir no terminal integrado" — hoje abre terminal do SO
+4. "Recortar" (Ctrl+X) — hoje só existe Copiar+Colar, não mover
+5. Verificar tematização completa do _BarraAbas ao trocar temas JSON
+6. Conectar arquivos_staging_selecionados() ao fluxo de commit
+   (git add seletivo por arquivo em vez de git add .)
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• _WorkerGit: falha silenciosa quando git não está no PATH ou
+  projeto não é repo git — nenhum indicador aparece, sem aviso
+• Colar (Ctrl+V) copia mas não move (sem "recortar")
+• FileTree.py antigo deve ser deletado manualmente no Windows
+  após copiar a pasta FileTree/ para evitar conflito de import
+• Arquivos rastreados antes de entrar no .gitignore continuam com
+  checkbox até o usuário usar "🧹 Limpar .gitignore" no painel Git
+
+
+--- 2026-06-19 Sessão 6 ---
+✅ FileTree.py: hex de fundo git → COR_GIT_FUNDO_MODIFICADO / COR_GIT_FUNDO_DELETADO
+✅ c__git_ui_projeto.py: stylesheet ESTILO_TREE e inline → concatenação com FONTE_MONO
+✅ a__git_ui_entrar.py, b__git_ui_conta.py, git_terminal.py: tematizados
+✅ painel_abas_inferior.py: import corrigido (CRLF bug); tematizado
+
+--- 2026-06-29 ---
+✅ STATUS reescrito com base na auditoria completa do código real
+
+--- 2026-07-14 (sessão 1) ---
+✅ FileTree.py (~1.673 linhas) refatorado em pacote FileTree/ (5 módulos)
+✅ .hein com ícone próprio e prioridade 2ª no proxy
+✅ Rename inline, drag-and-drop habilitados
+✅ QShortcuts Ctrl+Alt+± conflitantes removidos; duplicatas de métodos limpas
+✅ _DOC_FILETREE_.txt e _STATUS_FILETREE_.txt criados dentro do pacote
+
+--- 2026-07-14 (sessão 2) ---
+✅ barra_acoes como QHBoxLayout separado (NÃO dentro de MenuRecenteProjeto)
+✅ Clique simples devolve foco à árvore → Delete/Ctrl+C/V/Z funcionam sempre
+✅ Copiar / Colar / Desfazer adicionados ao menu de contexto
+✅ Shift+F1 / Shift+F2 / Shift+F3 / Ctrl+D adicionados ao eventFilter
+✅ Duplicar (Ctrl+D) e Copiar Caminho (clipboard do sistema) implementados
+✅ Menu de contexto com desabilitação condicional de itens
+
+--- 2026-07-19: Status Git em pastas + Staging visual integrado ---
+✅ _workers.py: propagação de status git para pastas pai após loop de arquivos
+   Prioridade: deletado(3) > modificado/renomeado(2) > novo(1)
+   Pastas entram no mesmo dict — _DelegateGit já consome automaticamente
+✅ _modelo.py _DelegateGit: staging_checks (ref compartilhada) + set_modo_staging(bool)
+   paint(): se staging ativo + item em staging_checks → PE_IndicatorCheckBox
+✅ painel.py PainelArquivos: modo staging completo
+   _modo_staging + _staging_checks no __init__
+   Botões "✓ Marcar tudo" / "□ Desmarcar tudo" na barra_acoes (ocultos fora do staging)
+   entrar_modo_staging() / sair_modo_staging() / arquivos_staging_selecionados()
+   _ao_clique_simples(): em staging togla checkbox; fora de staging comportamento normal
+✅ painel_abas_inferior.py PainelAbasInferior:
+   conectar_painel_arquivos(painel): registra ref ao FileTree
+   _trocar(indice != 0): chama sair_modo_staging() automaticamente
+✅ base.py: painel_git.conectar_painel_arquivos(painel_arquivos) após criação dos widgets
+   Segunda conexão: abrir_painel_git → painel_arquivos.entrar_modo_staging()

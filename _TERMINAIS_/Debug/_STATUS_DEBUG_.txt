@@ -1,0 +1,91 @@
+# 📁 _TERMINAIS_/Debug/_STATUS_DEBUG_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Sub-módulo _TERMINAIS_/Debug/
+Última atualização: 2026-06-30
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+─────────────────
+
+  ClienteDAP(QThread) — cliente_dap.py
+    ✅ Protocolo DAP completo sobre TCP
+    ✅ Handshake correto: initialize→response→attach→initialized event
+       (bug de ordem corrigido Sessão 11 — deadlock de 64s eliminado)
+    ✅ --stop-on-entry via CLI quando não há breakpoints
+       (stopOnEntry no corpo do attach ignorado pelo debugpy em --listen)
+    ✅ Loop de eventos: stopped / continued / exited / terminated
+    ✅ stackTrace → scopes → variables a cada pausa
+    ✅ Filtro de variáveis internas (__xxx, @py_xxx)
+    ✅ set_breakpoints(linhas) público — thread-safe via threading.Lock
+    ✅ Porta TCP dinâmica via socket.bind("", 0)
+    ✅ CREATE_NO_WINDOW no Windows (sem console visível)
+    ✅ _encerrar(): terminate/kill ANTES de drenar stderr (sem deadlock)
+       (bug corrigido Sessão 11)
+
+  PainelDebug(QWidget) — painel_debug.py
+    ✅ iniciar_sessao(arquivo, python_path, breakpoints=[])
+    ✅ sincronizar_breakpoints(breakpoints) — envia via set_breakpoints()
+    ✅ Controles: Continuar / Próxima Linha / Entrar / Sair / Parar
+    ✅ Estados visuais: Aguardando / ⏸ Pausado / ▶ Executando / ■ Parado / ✕ Erro
+    ✅ QTreeWidget de variáveis: Nome / Tipo / Valor
+    ✅ _ao_thread_finalizada(): deleteLater() após QThread.finished
+       (elimina 'QThread: Destroyed while thread is still running')
+    ✅ _parar_sessao_atual(): desconecta finished, parar(), wait(8s),
+       deleteLater() — sem race condition, sem dupla execução
+
+  Integração com editor e terminais:
+    ✅ Botão 🐛 → debug_solicitado = Signal() → main_window._iniciar_debug()
+    ✅ Coleta de breakpoints do NumeroLinhas antes de iniciar sessão
+    ✅ Guard de arquivo em _ao_breakpoint_clicado() (Sessão 11)
+    ✅ _ao_trocar_aba_breakpoint(): reconecta sinal ao NumeroLinhas ativo
+    ✅ fechar_aba() em terminal_tab_widget chama _parar_sessao_atual()
+    ✅ painel_debug_ativo() — retorna PainelDebug ativo ou None
+    ✅ estado_editor.py: regex de sanitização corrigida para Windows
+       (r'[\\/:*?"<>|]' — capturava backslash) — Sessão 11
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+──────────────────────────────
+
+  1. Exibir stdout do script depurado em aba Run separada
+     (hoje o output do processo não aparece — o debugpy não redireciona stdout)
+  2. Atalho de teclado para Continuar/Próxima Linha durante sessão ativa
+  3. Mostrar número da linha atual no título da aba durante pausa
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+
+  • debugpy precisa estar instalado na venv do projeto do usuário.
+    Se não estiver: _pegar_python_projeto() retorna '' e a sessão não inicia.
+    A IDE exibe mensagem clara mas não instala automaticamente.
+
+  • Em projetos com múltiplos arquivos, o depurador só acompanha o arquivo
+    que foi aberto ao clicar 🐛 — não segue imports de outros módulos.
+
+
+HISTÓRICO DE SESSÕES
+─────────────────────
+
+--- Sessão 9 (2026-06-26) ---
+✅ Depurador funcional: ClienteDAP + PainelDebug criados do zero
+✅ Protocolo DAP com stopOnEntry, controles de fluxo, variáveis locais
+✅ Integrado em terminal_tab_widget e main_window
+
+--- Sessão 11 (2026-06-28) ---
+✅ Handshake corrigido (deadlock de 64s eliminado)
+✅ --stop-on-entry via CLI (stopOnEntry no attach ignorado pelo debugpy --listen)
+✅ set_breakpoints() público + guard de arquivo
+✅ _encerrar() sem deadlock (terminate antes de drenar stderr)
+✅ _ao_thread_finalizada() + deleteLater() elimina 'QThread: Destroyed'
+✅ estado_editor.py: regex sanitização corrigida para Windows (backslash)
+
+--- 2026-06-30 ---
+✅ _DOC_DEBUG_.txt e _STATUS_DEBUG_.txt criados
+✅ _DOC_SESSAO_DEPURADOR.txt removido (conteúdo migrado para este STATUS)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fim do documento · atualizar a cada sessão que toque o depurador
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

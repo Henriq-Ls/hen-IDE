@@ -1,0 +1,294 @@
+# 📁 _TERMINAIS_/_STATUS_TERMINAIS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _TERMINAIS_
+Última atualização: 2026-10-19 (integração do build de executáveis na aba inferior)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# STATUS DO MÓDULO
+
+## IMPLEMENTADO
+
+  - ExecutavelExplorer ligado à aba Executável do painel inferior
+    · Painel grava nome/versão/ícone/arquivo inicial dentro do projeto ativo
+    · Build local usa a .venv do projeto e módulos _EXECUTAVEL_ compatíveis
+    · Release gera workflow e build_ci.py autônomo dentro do projeto
+    · Push usa a sessão segura do Git; sem token em URL/argumentos e sem force-push
+    · Tag já existente no GitHub é recusada em vez de sobrescrita
+
+  ── Explorers de configuração ────────────────────────────────────
+
+  - _TERMINAIS_/thema_explorer.py  [NOVO — Sessão 10]
+    ThemaExplorer(QWidget) — painel visual para thema.json.
+    · Swatch colorido _Swatch(QLabel) clicável → QColorDialog com alpha
+    · Valores "transparent" exibem swatch xadrez + campo de texto livre
+    · Organizado em 12 seções: meta, interface, editor, terminal,
+      terminal_run, painel_arquivos, painel_outline, painel_git, painel_ia,
+      log, grafo, menu_lateral, menu_contexto
+    · Sub-seções "sintaxe" (24 cores) e "cores_ansi" (16 cores) indentadas
+    · Salvar: json.dump → thema.json → hot-reload via gerenciador_tema
+    · QFileSystemWatcher bidirecional: mudança externa → recarrega UI
+    · _recarregar_se_necessario() via mtime antes de reconstruir
+
+  - _TERMINAIS_/configurar_explorer.py
+    ConfigurarExplorer — painel visual para configurar.json (Ctrl+5).
+    Seções completas: ui (borda, abas, fonte, aba_estilo), editor (cursor,
+    fonte), terminal, outline, painel_arquivos, painel_ia, git, gutter
+    (7 SpinBoxes), perfil (6 QLineEdit). Layout 2-col QGridLayout.
+    Controles: ComboBox de fonte, SpinBox pt/inteiros, QCheckBox, QLineEdit.
+
+  - _TERMINAIS_/atalho_explorer.py
+    AtalhoExplorer — painel visual para atalhos.json (Ctrl+4).
+    Grupos coloridos por contexto. Coluna tecla (editável) + ação (read-only).
+    Hot-reload registra novos QShortcuts em tempo real.
+
+  - _TERMINAIS_/autocomplete_explorer.py
+    AutocompleteExplorer — painel visual para autocomplete.json (Ctrl+6).
+    Seção ambiente (pasta_venv, site_packages) + snippets (add/remove).
+
+  - _TERMINAIS_/nucleo_explorer.py
+    NucleoExplorer — painel visual para nucleo.json (Ctrl+7).
+    7 seções: formatador, diagnóstico, índice, ambiente, ia,
+    documentador (QPlainTextEdit), exportar (checkboxes).
+
+  - _TERMINAIS_/prompt_nucleo_explorer.py  [NOVO — Sessão 28 / IMP-D]
+    PromptNucleoExplorer(QWidget) — editor visual para nucleo_prompts.json (Ctrl+0).
+    2 seções:
+      Docstrings    — prompts para gerar docstring de função (3 lin) e classe (3 lin)
+      Documentador  — prompts para doc_pasta (6 lin), resumo_projeto (4 lin),
+                      readme_github (8 lin), doc_site (8 lin)
+    Botão "Salvar Alterações": grava nucleo_prompts.json + invalida cache nucleo_ia.
+    Botão "Restaurar Padrão": confirma + regrava padrão hardcoded + recarga.
+    Aberto diretamente por Ctrl+0 (não via abrir JSON no editor).
+    QFileSystemWatcher: hot-reload bidirecional — se o JSON mudar no disco,
+    o Explorer recarrega automaticamente (debounce 700ms, igual ao NucleoExplorer).
+
+  SINCRONIZAÇÃO BIDIRECIONAL (todos os 6 Explorers):
+  - QFileSystemWatcher por explorer monitora seu JSON
+  - _recarregar_se_necessario() compara mtime antes de reconstruir UI
+  - _ultimo_mtime rastreado para evitar recargas desnecessárias
+
+  ROTEAMENTO (main_window.py — _ao_trocar_aba_editor_json):
+  - thema.json          → ThemaExplorer          (ícone: mdi.palette-outline)
+  - atalhos.json        → AtalhoExplorer         (ícone: mdi.keyboard-outline)
+  - autocomplete.json   → AutocompleteExplorer   (ícone: mdi.auto-fix)
+  - nucleo.json         → NucleoExplorer         (ícone: mdi.cog-outline)
+  - configurar.json     → ConfigurarExplorer     (ícone: mdi.tune-vertical)
+  - executavel.json     → ExecutavelExplorer     (ícone: mdi.file-cog-outline)
+  - qualquer outro .json → JsonExplorer genérico
+
+  ABERTURA DIRETA (Ctrl+0 — não via JSON no editor):
+  - nucleo_prompts.json → PromptNucleoExplorer  (ícone: mdi.text-box-edit-outline)
+    aberto por Ctrl+0 → main_window.abrir_prompt_nucleo()
+    → terminal_tabs.abrir_aba_prompt_nucleo()
+
+  ── Terminal Run ─────────────────────────────────────────────────
+
+  - RunOutputWidget executando código na venv do usuário
+  - Impressão de output em tempo real sem bloquear a UI
+  - _ler_saida() (stdout) agora passa por traduzir() (_TRADUTION_), igual a
+    _ler_erro() (stderr) — antes só o stderr era traduzido; print()/help() e
+    demais saídas em inglês do processo do usuário agora aparecem em PT-BR
+  - Detecção automática de JSON/dict no output:
+    · json.loads + ast.literal_eval como fallback
+    · Detecção por linha, texto completo e blocos embutidos
+  - _barra_json no rodapé com botão "Explorar →"; resetada no clear()
+  - Signal explorar_json_solicitado(str)
+  - _arquivo_exec: persiste caminho do arquivo; lido pelo main_window
+
+  ── JsonExplorer genérico ────────────────────────────────────────
+
+  - JsonExplorer(QWidget) — aba { } JSON
+  - Árvore colapsável com cores por tipo de dado
+  - Clique na chave copia caminho completo (data['user']['id'])
+  - Geração de código Python recursiva
+  - Botão "Copiar código" + "Abrir no Editor"
+  - Reutilização da aba (sem duplicata)
+  - Botão { } no canto superior em todos os terminais
+  - Limite de 50 itens em listas
+
+  ── Terminal PowerShell ──────────────────────────────────────────
+
+  - PowerShellTerminalWidget interativo
+  - _ultimo_comando: persiste último comando; lido pelo main_window
+  - set_project_path(path): navega e ativa .venv
+  - Autocomplete básico [Sessão 23]: Tab completa/cicla arquivos e pastas
+    do cwd (com suporte a subpastas, ex: models\livros.py) ou pacotes do
+    .venv+stdlib em contexto import/from
+  - Tooltip leve (QToolTip, _atualizar_dica_autocomplete) mostra os
+    candidatos do Tab enquanto o usuário digita, sem abrir popup —
+    atualizado após cada tecla, Backspace e navegação de histórico (↑/↓)
+  - _cursor_no_fim_da_linha(): Tab-completion e tooltip só operam com o
+    cursor no fim da linha — corrige corrupção de texto que ocorria ao
+    editar no meio da linha (com ←) e completar; limitação assumida
+
+  ── Depurador Integrado (Sessões 9 + 11) ─────────────────────────
+
+  - Botão 🐛 emite debug_solicitado = Signal()
+  - ClienteDAP(QThread): protocolo DAP completo sobre TCP
+    · initialize → aguarda response → attach → aguarda initialized event
+      → setBreakpoints → configurationDone  (ordem correta; Sessão 11)
+    · Sem BPs: subprocess recebe --stop-on-entry na linha de comando
+      (stopOnEntry no corpo do attach é ignorado pelo debugpy em --listen)
+    · set_breakpoints(linhas) público — chamável da thread principal
+    · Loop de eventos: stopped / continued / exited / terminated
+    · stackTrace → scopes → variables a cada pausa
+    · Filtro de variáveis internas (__xxx, @py_xxx)
+    · Porta TCP dinâmica, thread-safety via Lock, CREATE_NO_WINDOW
+    · _encerrar(): terminate/kill ANTES de drenar stderr (sem deadlock)
+  - PainelDebug(QWidget): controles Continuar/Próxima/Entrar/Sair/Parar
+    · iniciar_sessao(arquivo, python_path, breakpoints=[])
+    · sincronizar_breakpoints(breakpoints) — envia BPs via set_breakpoints()
+    · Estados visuais: Aguardando / ⏸ Pausado / ▶ Executando / ■ Parado / ✕ Erro
+    · QTreeWidget de variáveis: Nome / Tipo / Valor
+    · _ao_thread_finalizada(): conectado a QThread.finished — destrói
+      o ClienteDAP via deleteLater() após o thread do SO terminar;
+      elimina 'QThread: Destroyed while thread is still running'
+    · _parar_sessao_atual(): desconecta finished, parar() + wait(8s) +
+      deleteLater() — cleanup sem race condition nem dupla execução
+  - fechar_aba() em terminal_tab_widget.py chama _parar_sessao_atual()
+    antes de removeTab() quando o widget for PainelDebug
+  - terminal_tab_widget.painel_debug_ativo() — retorna PainelDebug ativo
+    ou None (usado por main_window para sincronizar BPs)
+  - main_window._ao_breakpoint_clicado(linha): sincroniza BPs com sessão
+    ativa somente se o arquivo do editor == arquivo da sessão (guard)
+  - main_window._ao_trocar_aba_breakpoint(): reconecta sinal de BP ao
+    NumeroLinhas da aba que acabou de ficar ativa
+
+  ── add_new_tab_com_conteudo (tab_widget.py) ─────────────────────
+  - Cria aba no editor com conteúdo já preenchido (código gerado pelo JsonExplorer)
+
+  ── Mult_Terminais/ — execução linguagens não-Python ────────────────
+
+  - ExecutorTerminal(QWidget): executa arquivos de linguagens com can_run=True
+    · Estado sem_ferramenta: label de aviso + botão "Como instalar"
+    · Estado pronto: campo de comando editável + ▶ Run + ■ Stop
+    · QProcess não-bloqueante: stdout/stderr capturados em tempo real
+    · Aba reutilizada por nome de linguagem (sem duplicatas)
+
+  - ExecutorExplorer(QWidget): painel visual para executores.json (Ctrl+8)
+    · _LinhaExecutor: nome + status ✓/✗ + campo + botões Salvar/Verificar
+    · _verificar_tudo() via shutil.which em todas as linguagens
+    · _recarregar_se_necessario(): padrão dos outros Explorers
+
+  - executores.json: JavaScript, TypeScript, Shell, Lua, Makefile configurados
+
+  - F1 silencioso implementado:
+    · can_run=True  → abrir_executor_terminal(nome, arquivo)
+    · can_run=False → return (sem ação, sem erro)
+
+  - Imports diretos em terminal_tab_widget.py (×2) e main_window.py (×1):
+    from _TERMINAIS_.Mult_Terminais.terminal_executor import ExecutorTerminal
+    from _TERMINAIS_.Mult_Terminais.executor_explorer import ExecutorExplorer
+
+## EM DESENVOLVIMENTO
+  - Explorer compartilhado para Tarefas do Projeto + Tarefas Globais
+    (um único terminal para os dois tipos de tarefas; previsto para sessão futura)
+
+## PENDENTE / PRÓXIMA ORDEM  🔲
+  1. ExecutavelExplorer: reconfirmar release GitHub ponta a ponta depois
+     do fix de "permissions: contents: write" (403 corrigido, mas o fluxo
+     completo build+publish ainda não foi validado de novo — Sessão 24)
+  2. ExecutavelExplorer: testar release em um projeto que NÃO seja a
+     própria IDE hein, agora que build_ci.py é gerado autossuficiente
+     por projeto (gerador_build_ci.py — Sessão 24)
+  3. TarefasExplorer — terminal compartilhado para tarefas do projeto e da IDE
+  4. Exibir saída do script depurado em aba Run separada (stdout do processo)
+  5. fechar_aba() seguro para ExecutorTerminal — verificar se QProcess.terminate()
+     já é chamado antes de removeTab() (análogo ao tratamento do PainelDebug)
+  6. Input interativo (stdin) para ExecutorTerminal — Shell e Lua que chamam
+     readline() travam hoje; fase futura: QLineEdit de input embutido
+  7. Autocomplete do terminal PowerShell: popup visual, símbolos do
+     projeto e fuzzy matching (versão atual é básica: arquivos/pastas/
+     pacotes + tooltip leve, com cursor preso ao fim da linha)
+
+─────────────────────────────────────────────────────────────────
+# HISTÓRICO DE SESSÕES
+─────────────────────────────────────────────────────────────────
+
+--- 2026-07-18 Sessão 35: ExecutavelExplorer — checagem de regressão + registrar_release ---
+✅ executavel_explorer.py (_iniciar_release): checar_regressao_versao() via versionamento.py
+   antes de iniciar a fila — se versão nova < VERSION atual, HeinPopup.confirmar() exibe
+   aviso. Usuário cancela ou confirma ciente da regressão.
+✅ executavel_explorer.py (_proxima_etapa_release): quando fila vazia (release concluído),
+   chama versionamento.registrar_release(caminho, versao, descricao) — sincroniza VERSION
+   com a versão do release e adiciona entrada "release vX.Y.Z" no CHANGELOG.md.
+✅ Ambas as chamadas via _UTILITARIOS_/versionamento.py (thread-safe, RLock de módulo)
+
+--- 2026-07-11 Sessão 24: Release GitHub genérico por projeto + fix 403 ---
+✅ executavel_explorer.py: _iniciar_release()/_proxima_etapa_release() —
+   fila de git add -f/commit/tag -f/push via ProcessoThread; substitui o
+   antigo Z__EXECUTAVEL/EXECUTAVEL_REPOSITORIO.py (pasta removida)
+✅ executavel_explorer.py: git add -f agora inclui build_ci_rel
+   (.hein/executavel/build_ci.py) gerado dentro do projeto do usuário,
+   em vez de forçar a pasta _EXECUTAVEL_ (só existe no repo da IDE)
+⚠️  Primeiro teste real de release: build passou no Actions, "Publicar
+   release" falhou com 403 "Resource not accessible by integration" —
+   corrigido adicionando permissions: contents: write no release.yml
+   gerado (ver _EXECUTAVEL_ / PENTE_FINO/PT_EXEC_RELESE.txt para detalhe)
+⚠️  Confirmado (usuário identificou): o script de build do Actions só
+   funcionava lançando a própria IDE, por importar de _EXECUTAVEL_/ —
+   corrigido com um gerador novo (gerador_build_ci.py) que escreve uma
+   cópia autossuficiente do script dentro de cada projeto lançado
+
+--- 2026-07-11 Sessão 23: Autocomplete básico no terminal PowerShell ---
+✅ terminal_powershell.py: Tab completa/cicla arquivos e pastas do cwd
+   (com subpastas, ex: models\livros.py) ou pacotes do .venv+stdlib em
+   contexto import/from
+✅ terminal_powershell.py: tooltip leve (QToolTip) com os candidatos do
+   Tab enquanto o usuário digita, sem popup — atualizado após inserir
+   caractere, após Backspace (QTimer.singleShot(0)) e após ↑/↓ no histórico
+✅ terminal_powershell.py: _cursor_no_fim_da_linha() — Tab e tooltip só
+   operam com o cursor no fim da linha; corrige corrupção de texto
+   (caractere duplicado) ao completar após editar no meio da linha
+
+--- Sessão 9 (2026-06-26) ---
+✅ cliente_dap.py: ClienteDAP(QThread) com protocolo DAP completo
+✅ painel_debug.py: PainelDebug com controles e estados visuais
+✅ terminal_tab_widget.py: botão 🐛, abrir_aba_debug(), fechar_aba() seguro
+✅ main_window.py: _iniciar_debug(), _pegar_python_projeto()
+
+--- Sessão 10 (2026-06-27) ---
+✅ thema_explorer.py: ThemaExplorer com swatches clicáveis, QColorDialog,
+   12 seções de cores, sub-seções sintaxe e cores_ansi, salvar/watcher
+✅ main_window.py: roteamento thema.json → ThemaExplorer adicionado
+   em _ao_trocar_aba_editor_json(); ícone mdi.palette-outline
+✅ Atalhos Ctrl+N reorganizados (veja _STATUS_CONFIGURA_.txt)
+
+--- 2026-07-09 Sessão 22: ExecutavelExplorer adicionado ao terminal ---
+✅ executavel_explorer.py: roteamento executavel.json → ExecutavelExplorer registrado
+✅ executavel_explorer.py: _ler_gitignore(), _auto_detectar com dirs_skip_extra,
+   layout 3 painéis, pasta autossuficiente (requirements.txt + arvore.txt)
+
+--- 2026-07-08 (esta sessão): Reorganização Mult_Terminais/ ---
+✅ Pasta _TERMINAIS_/Mult_Terminais/ criada
+✅ terminal_executor.py e executor_explorer.py movidos para Mult_Terminais/
+✅ __init__.py criado exportando ExecutorTerminal + ExecutorExplorer
+✅ Arquivos originais em _TERMINAIS_/ removidos (sem shims)
+✅ Imports atualizados em terminal_tab_widget.py (×2) e main_window.py (×1)
+✅ _DOC_MULT_TERMINAIS_.txt e _STATUS_MULT_TERMINAIS_.txt criados
+✅ _DOC_TERMINAIS_.txt e _STATUS_TERMINAIS_.txt atualizados
+
+--- Sessão 16 (2026-07-04): Tradução de stdout ---
+✅ terminal_run.py (_ler_saida): out = traduzir(out) adicionado antes de exibir
+   a saída padrão do processo — paridade com _ler_erro(), que já traduzia stderr
+
+--- Sessão 11 (2026-06-28) ---
+✅ cliente_dap.py: handshake corrigido (initialize→response→attach→event);
+   --stop-on-entry via CLI quando sem BPs; set_breakpoints() público;
+   _encerrar() sem deadlock (terminate antes de drenar stderr)
+✅ painel_debug.py: iniciar_sessao(breakpoints=); sincronizar_breakpoints();
+   wait(8000) em _parar_sessao_atual()
+✅ terminal_tab_widget.py: painel_debug_ativo() adicionado
+✅ main_window.py: _iniciar_debug() coleta BPs do NumeroLinhas;
+   _ao_trocar_aba_breakpoint(); _ao_breakpoint_clicado() com guard de arquivo
+✅ estado_editor.py: regex de sanitização de path corrigida para Windows
+   (r'[\\/:*?"<>|]' — captura backslash)
+
+--- 2026-07-17 Sessão 28: PromptNucleoExplorer (IMP-D) ---
+✅ prompt_nucleo_explorer.py: PromptNucleoExplorer(QWidget) criado — editor visual
+   para nucleo_prompts.json; 2 seções (Docstrings / Documentador); 6 QPlainTextEdit
+   com alturas proporcionais; Salvar + Restaurar Padrão; invalida cache nucleo_ia
+✅ terminal_tab_widget.py: abrir_aba_prompt_nucleo() — abre/foca PromptNucleoExplorer
+✅ main_window/mixin_layout.py: abrir_prompt_nucleo() → terminal_tabs.abrir_aba_prompt_nucleo()
+✅ main_window/base.py: QShortcut(Ctrl+0) + item "Prompts Núcleo" no menu Configurações

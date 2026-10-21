@@ -1,0 +1,187 @@
+# 📁 _CONFIGURA_/_STATUS_CONFIGURA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hen IDE — Módulo _CONFIGURA_
+Última atualização: 2026-07-17 (Sessão 28: IMP-D — ATALHO_PROMPTS_NUCLEO + PromptNucleoExplorer)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# STATUS DO MÓDULO
+
+## IMPLEMENTADO
+
+  ── Constantes e gerenciadores ───────────────────────────────────
+
+  - __init__.py com constantes globais completas
+    (cores, fontes, tamanhos, caminhos, paleta ANSI de 16 cores,
+    +21 constantes adicionadas na Sessão 6)
+    ATALHO_NUCLEO = "Ctrl+7" adicionado na Sessão 10.
+    ATALHO_PROMPTS_NUCLEO = "Ctrl+0" adicionado na Sessão 28 (IMP-D).
+    ARQUIVO_NUCLEO_PROMPTS = os.path.join(PASTA_APPDATA, "nucleo_prompts.json") (IMP-D).
+
+  - ATALHOS Ctrl+1..7 — sequência reorganizada (Sessão 10):
+      Ctrl+1  ATALHO_TAREFAS_PROJETO  → Tarefas do Projeto
+      Ctrl+2  ATALHO_TAREFAS_GLOBAIS  → Tarefas Globais
+      Ctrl+3  ATALHO_EDITAR_TEMA      → Tema (thema.json)
+      Ctrl+4  ATALHO_EDITAR_ATALHOS   → Atalhos (atalhos.json)
+      Ctrl+5  ATALHO_EDITOR_CONFIG    → Configurações (configurar.json)
+      Ctrl+6  ATALHO_AUTOCOMPLETE     → Autocomplete
+      Ctrl+7  ATALHO_NUCLEO           → Núcleo
+
+  - gerenciador_tema.py — singleton tema_global(), .cor() com
+    chave pontilhada e fallback, hot-reload via QFileSystemWatcher;
+    listar_temas_json() e aplicar_tema_json() implementados.
+
+  - gerenciador_atalhos.py — registro de QShortcuts, detecção
+    de conflitos, ApplicationShortcut para Ctrl+1..7
+    ide::AbrirPromptNucleo → abrir_prompt_nucleo adicionado (IMP-D)
+
+  - gerenciador_configurar.py — aplicação de fontes por componente
+    com _aplicar_fonte_widget() (stylesheet pt, nunca px);
+    Bug de font-size=0 em hot-reload eliminado.
+
+  - gerenciador_nucleo.py — leitor de nucleo.json para _NUCLEO_/
+
+  - gerenciador_perfil.py  [identificado em auditoria 2026-06-29]
+    obter_perfil(chave, padrao), obter_nome_usuario() — acessa seção
+    "perfil" de configurar.json. Consumido por utilitarios_perfil.py.
+
+  - gerenciador_templates.py  [identificado em auditoria 2026-06-29]
+    salvar_template(), carregar_templates() — persiste templates de
+    arquivos padrão em PASTA_APPDATA/templates_projeto.json.
+
+  - gerenciador_tarefas.py  [identificado em auditoria 2026-06-29]
+    GerenciadorTarefas singleton — carrega tarefas.json (global +
+    projeto ativo), registra QShortcuts F2–F10, executa via PowerShell.
+    Variáveis: $PROJETO / $ARQUIVO / $VENV / $SCRIPTS.
+
+  - gerenciador_autocomplete.py  [identificado em auditoria 2026-06-29]
+    autocomplete_global() singleton — carrega autocomplete.json, mantém
+    snippets em memória, hot-reload para editores registrados.
+    API: registrar(widget) / desregistrar(widget).
+    _watcher_appdata (QFileSystemWatcher) [Sessão 15]: monitora
+    %APPDATA%/hen/autocompletar/ (pasta + arquivos dentro) com debounce
+    de 400ms; ao detectar mudança externa, invalida _CACHE_FONTES de
+    Autocomplete/autocomplete.py (import tardio de _invalidar_cache_fontes,
+    evita ciclo de import) e notifica os editores registrados.
+
+  - log.py — log centralizado (log.ok / log.info / log.aviso / log.erro)
+
+  - fontes.py — carregamento de fontes customizadas hen
+
+  - Hot-reload de thema.json e configurar.json sem reiniciar
+
+  - Fallback de cores para todos os componentes
+
+  ── Explorers visuais (em _TERMINAIS_/) ──────────────────────────
+
+  - _TERMINAIS_/thema_explorer.py  [NOVO — Sessão 10]
+    ThemaExplorer: swatch _Swatch clicável (QColorDialog com alpha),
+    12 seções, sub-seções sintaxe (24 cores) + cores_ansi (16 cores),
+    valores "transparent" com swatch xadrez, salvar + watcher bidirecional.
+
+  - _TERMINAIS_/configurar_explorer.py
+    ConfigurarExplorer (Ctrl+5): seções ui, editor, terminal, outline,
+    painel_arquivos, painel_ia, git, gutter (7 SpinBoxes), perfil (6 campos).
+    Layout 2-col QGridLayout. ComboBox fonte + preview + SpinBox + QCheckBox.
+
+  - _TERMINAIS_/atalho_explorer.py
+    AtalhoExplorer (Ctrl+4): grupos por contexto, tecla editável.
+
+  - _TERMINAIS_/autocomplete_explorer.py
+    AutocompleteExplorer (Ctrl+6): ambiente + snippets add/remove.
+
+  - _TERMINAIS_/nucleo_explorer.py
+    NucleoExplorer (Ctrl+7): 7 seções com controles por tipo.
+
+  - _TERMINAIS_/prompt_nucleo_explorer.py  [NOVO — Sessão 28 / IMP-D]
+    PromptNucleoExplorer (Ctrl+0): editor visual de nucleo_prompts.json.
+    2 seções: Docstrings (funcao/classe) + Documentador (doc_pasta/resumo/readme/site).
+    Aberto diretamente via Ctrl+0 — não passa por _ao_trocar_aba_editor_json.
+
+  SINCRONIZAÇÃO BIDIRECIONAL (todos os 6 Explorers):
+    QFileSystemWatcher + _ultimo_mtime + _recarregar_se_necessario()
+
+  ROTEAMENTO (main_window.py):
+    _ao_trocar_aba_editor_json() mapeia cada JSON ao seu Explorer.
+    thema.json → ThemaExplorer adicionado na Sessão 10.
+
+  ── Menu Projeto ─────────────────────────────────────────────────
+
+  - Menu Projeto reordenado (Sessão 10):
+    Tarefas do Projeto (Ctrl+1)
+    Tarefas Globais    (Ctrl+2)
+    Configurações Tema (Ctrl+3)
+    Editar Atalhos     (Ctrl+4)
+    Config do Editor   (Ctrl+5)
+    Autocomplete       (Ctrl+6)
+    Núcleo             (Ctrl+7)  ← item novo adicionado
+    ─────────────────────────────
+    Criar Venv / Ativar Venv + Pip / Painel de Erros / Restaurar Padrões
+
+  ── Outros itens implementados ───────────────────────────────────
+
+  - Bug do duplo-undo (Ctrl+Z) corrigido
+  - Snippets no autocomplete.json com suporte a \n e indentação
+  - Lista ATALHOS_NAO_REGISTRAR
+  - Comentários // em todos os JSONs de configuração
+
+## EM DESENVOLVIMENTO
+  - Explorer de Tarefas (terminal compartilhado para Tarefas do Projeto
+    e Tarefas Globais — previsto para sessão futura)
+
+## PENDENTE / PRÓXIMA ORDEM  🔲
+  1. TarefasExplorer — terminal compartilhado para tarefas do projeto e da IDE
+  2. Suporte a múltiplos temas (seleção de tema no menu)
+
+─────────────────────────────────────────────────────────────────
+# HISTÓRICO DE SESSÕES
+─────────────────────────────────────────────────────────────────
+
+
+--- 2026-06-26 Sessão 8 ---
+✅ configurar.json + default/configurar.json: nova seção "gutter"
+   com 7 constantes (largura_guiter, largura_pad_esq, largura_seta,
+   largura_git, largura_pad_dir, largura_erro, numeros_colunas)
+✅ configurar.json: chave "tamanho_fonte_aba" em "ui"
+✅ _DOC_CONFIGURA.txt: MAPEAMENTO DE SEÇÕES atualizado com "gutter"
+
+--- 2026-06-27 Sessão 10 ---
+✅ thema_explorer.py: ThemaExplorer criado com swatches, QColorDialog,
+   12 seções, sub-seções sintaxe/cores_ansi, watcher bidirecional
+✅ main_window.py: roteamento thema.json → ThemaExplorer adicionado
+✅ __init__.py: ATALHO_NUCLEO = "Ctrl+7" adicionado;
+   sequência Ctrl+2..6 reorganizada:
+   Ctrl+2=Tarefas Globais, Ctrl+4=Atalhos, Ctrl+5=Config, Ctrl+6=Autocomplete
+✅ atalhos.json: Workspace ctrl-2..6 atualizados para nova ordem
+✅ main_window.py: menu Projeto reordenado + item "Núcleo Ctrl+7" adicionado
+✅ _DOC_CONFIGURA.txt: seção de atalhos e mapeamento thema.json atualizados
+✅ _MAPA_JSON_EXPLORERS_.txt: documento de mapeamento criado na raiz
+
+--- 2026-07-11 Sessão 15: Watcher AppData no autocomplete ---
+✅ gerenciador_autocomplete.py: novo _watcher_appdata (QFileSystemWatcher)
+   monitorando %APPDATA%/hen/autocompletar/ inteira + arquivos dentro;
+   debounce de 400ms antes de invalidar cache/notificar
+✅ gerenciador_autocomplete.py: invalidação de _CACHE_FONTES de
+   Autocomplete/autocomplete.py via import tardio de _invalidar_cache_fontes
+   (evita ciclo de import entre os dois módulos)
+
+--- 2026-06-30 Sessão 14 ---
+✅ gerenciador_tema.py: removidas classes mortas _ReloadWorker/_ReloadSignals
+   (código deixado por IA anterior que nunca foi conectado)
+✅ gerenciador_tema.py: QTimer importado no topo — import local redundante
+   dentro de __init__ removido
+✅ gerenciador_tema.py (_aplicar_reload): rehighlight do editor ativo diferido
+   via QTimer.singleShot(0, ...) — QSS visual aplica primeiro, highlight depois;
+   elimina freeze/tela branca ao editar o tema com arquivo grande aberto
+✅ gerenciador_tema.py (_aplicar_reload): quando caminho == ARQUIVO_TEMA,
+   limpa _tema_json_atual da BarraTitulo e chama _salvar() — garante que
+   próximo startup use ARQUIVO_TEMA em vez de tema_json obsoleto de layout.json
+✅ barra_aba_topo.py (_restaurar_tema): compara mtime de ARQUIVO_TEMA vs tema_json;
+   se ARQUIVO_TEMA for mais recente (usuário editou thema.json depois de
+   selecionar tema do menu), descarta tema_json e usa ARQUIVO_TEMA — corrige
+   tema errado na inicialização da IDE
+
+--- 2026-07-17 Sessão 28: IMP-D — PromptNucleoExplorer + Ctrl+0 ---
+✅ __init__.py: ATALHO_PROMPTS_NUCLEO = "Ctrl+0" + ARQUIVO_NUCLEO_PROMPTS adicionados
+✅ gerenciador_atalhos.py: ide::AbrirPromptNucleo → abrir_prompt_nucleo
+✅ _TERMINAIS_/prompt_nucleo_explorer.py: PromptNucleoExplorer criado

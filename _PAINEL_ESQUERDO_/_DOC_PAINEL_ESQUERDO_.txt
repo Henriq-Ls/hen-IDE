@@ -1,0 +1,214 @@
+# 📁 _PAINEL_ESQUERDO_/_DOC_PAINEL_ESQUERDO_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _PAINEL_ESQUERDO_
+Última atualização: 2026-10-19 (aba Executável + staging visual)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+Painel lateral esquerdo da IDE.
+Divide-se em duas regiões verticais:
+  - Superior: FileTree (árvore de arquivos do projeto)
+  - Inferior: PainelAbasInferior (Git e Executável em abas)
+
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES
+─────────────────────────────────────────────────────────────────
+
+FileTree/ (pacote — ver _DOC_FILETREE_.txt):
+  - Exibir a árvore de arquivos do projeto via QTreeView + QFileSystemModel
+  - Mostrar ícones por extensão de arquivo e por pack de ícones configurado
+  - Ícones especiais: .venv (package-variant) e .hein (folder-cog #7E57C2)
+  - .hein e .venv pinados no topo do proxy (_ProxyOrdem)
+  - Exibir indicadores de status Git por arquivo E por pasta via _WorkerGit(QObject)
+    rodando git status em QThread; pastas herdam status mais crítico dos filhos
+  - Rename inline via _tree.edit() (sem popup) + histórico automático
+  - Apagar → .hein/lixeira/ com suporte a Ctrl+Z e restauração
+  - Drag-and-drop InternalMove para mover arquivos/pastas
+  - Botões de ação na barra_acoes (ajuda, expandir, colapsar, filtrar,
+    Marcar tudo, Desmarcar tudo — últimos dois visíveis só em staging)
+  - Menu de contexto: novo arquivo, nova pasta, renomear, apagar,
+    mostrar no explorador, enviar para IA, executar, abrir no navegador,
+    adicionar ao git, restaurar/esvaziar lixeira
+  - Sinalizar arquivo selecionado (duplo clique) para abrir no editor
+  - Sinalizar arquivo clicado (clique simples) para troca de aba no editor
+  - Revelar e selecionar arquivo programaticamente (revelar_arquivo)
+  - Modo staging: checkboxes em arquivos rastreáveis ao abrir terminal Git;
+    clique togla seleção; botões "Marcar tudo / Desmarcar tudo"
+
+PainelAbasInferior (painel_abas_inferior.py):
+  - Hospedar 2 abas com botões customizados (AbaInferiorBotao):
+      Aba 0 — Git         → PainelGitHub
+      Aba 1 — Executável → PainelExecutavel
+  - Renderizar barra de abas com linha de borda inferior via QPainter
+  - Trocar entre abas via QStackedWidget
+  - conectar_painel_arquivos(painel): registra referência ao PainelArquivos
+    para desativar staging ao sair da aba Git (_trocar(indice != 0))
+  - Staging mode: ao trocar para Executável, chama
+    PainelArquivos.sair_modo_staging() automaticamente
+  - Aba Executável grava nome, versão, ícone e arquivo inicial no projeto;
+    emite abrir_executavel_config para abrir o Explorer central
+
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS
+─────────────────────────────────────────────────────────────────
+
+  FileTree/                 Pacote — árvore de arquivos do projeto
+  (ver _DOC_FILETREE_.txt)    __init__.py      → exporta PainelArquivos
+                              _auxiliares.py   → helpers de estilo, cache de
+                                                 ícones, MenuRecenteProjeto
+                              _workers.py      → _WorkerGit (QObject em QThread)
+                                                 + propagação de status para pastas
+                              _modelo.py       → _IconProvider, _ProxyOrdem,
+                                                 _DelegateGit (suporte a staging)
+                              painel.py        → PainelArquivos (classe principal)
+                                                 com modo staging integrado
+
+  painel_abas_inferior.py   PainelAbasInferior: container das 2 abas
+                            _BarraAbas: barra de abas com borda inferior
+                            via QPainter + hot-reload de tema
+                            AbaInferiorBotao: botão de aba estilizado
+                            (cantos arredondados, mesmo padrão da BarraTitulo)
+                            conectar_painel_arquivos(painel): liga ao FileTree
+                            para coordenar modo staging
+
+  Git/                      Subpasta — integração Git/GitHub completa
+                            (ver _DOC_GIT.txt nesta subpasta)
+
+  painel_executavel.py      PainelExecutavel: configuração do build por projeto
+                             (ver _EXECUTAVEL_/_DOC_EXECUTAVEL_.txt)
+
+
+─────────────────────────────────────────────────────────────────
+# FLUXO INTERNO
+─────────────────────────────────────────────────────────────────
+
+Abertura de projeto:
+  MainWindow.abrir_projeto(caminho)
+    → PainelArquivos.set_projeto(caminho)
+         → QFileSystemModel.setRootPath(caminho)
+         → QTreeView.setRootIndex(...)
+         → _WorkerGit(caminho) em QThread → git status
+              → concluido(dict) → _status_git atualizado (arquivos + pastas)
+              → _DelegateGit colore arquivos E pastas com status herdado
+
+Clique simples no FileTree (modo normal):
+  → sinal arquivo_clicado_simples(caminho)
+  → MainWindow troca para aba já aberta (NUNCA abre arquivo novo)
+
+Clique simples no FileTree (modo staging):
+  → togla staging_checks[caminho_key]
+  → viewport().update() — checkbox redesenhado
+
+Duplo clique no FileTree:
+  → sinal arquivo_selecionado(caminho)
+  → MainWindow abre o arquivo no editor
+
+Revelar arquivo (ao trocar aba no editor):
+  → PainelArquivos.revelar_arquivo(caminho)
+  → QTreeView.scrollTo() + setCurrentIndex()
+
+Troca de aba inferior:
+  AbaInferiorBotao clicado
+    → QStackedWidget.setCurrentIndex(i)
+    → botão ativo recebe property("ativa", "true")
+     → se indice != 0: PainelArquivos.sair_modo_staging()
+     → índice 1: mostra PainelExecutavel
+
+Ativação do modo staging (ao clicar botão "Main" no Git):
+  GitUIProjeto.abrir_painel_git emitido
+    → base.py → PainelArquivos.entrar_modo_staging()
+         → staging_checks preenchido (todos True)
+         → delegate.set_modo_staging(True)
+         → botões "Marcar tudo / Desmarcar tudo" visíveis
+
+
+─────────────────────────────────────────────────────────────────
+# SINAIS / API PÚBLICA
+─────────────────────────────────────────────────────────────────
+
+  FileTree
+    [Signal] arquivo_selecionado(str)
+             Emitido ao dar duplo-clique em arquivo.
+             Conectado a: main_window.abrir_arquivo()
+    [Signal] arquivo_clicado_simples(str)
+             Emitido ao clicar uma vez em arquivo (fora do staging).
+             Conectado a: main_window para pré-visualização / destaque de aba
+    [Signal] arquivo_enviado_para_ia(str)
+             Emitido ao usar "Enviar para IA" no menu
+    [Signal] executar_arquivo(str)
+             Emitido ao usar "Executar" no menu (.py)
+
+  API PÚBLICA (chamada de _APP_/main_window.py):
+    PainelArquivos.set_projeto(caminho)         — define raiz ao abrir projeto
+    PainelArquivos.revelar_arquivo(caminho)     — expande árvore até o arquivo
+    PainelArquivos.entrar_modo_staging()        — ativa checkboxes de staging
+    PainelArquivos.sair_modo_staging()          — desativa checkboxes de staging
+    PainelArquivos.arquivos_staging_selecionados() → list[str]
+
+    PainelAbasInferior.conectar_painel_arquivos(painel) — liga as duas peças
+    PainelAbasInferior.set_projeto(caminho)     — repassa para todas as abas
+    PainelAbasInferior.set_arquivo_ativo(caminho) — repassa para aba Git
+     PainelAbasInferior.mostrar_executavel()     — abre a aba Executável
+     PainelAbasInferior.abrir_executavel_config(str) — abre o Explorer no centro
+
+
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+  _APP_/main_window/base.py
+    - Recebe sinais: arquivo_selecionado(str), arquivo_clicado_simples(str),
+                     arquivo_enviado_para_ia(str), executar_arquivo(str)
+    - Chama: set_projeto(caminho), revelar_arquivo(caminho)
+    - Chama: painel_git.conectar_painel_arquivos(painel_arquivos)
+    - Conecta: abrir_painel_git → painel_arquivos.entrar_modo_staging()
+
+  _PAINEL_ESQUERDO_/Git/git_ui.py
+    - PainelGitHub instanciado na Aba 0 do PainelAbasInferior
+
+  _EXECUTAVEL_.PainelExecutavel
+     - Implementado em _PAINEL_ESQUERDO_/painel_executavel.py e instanciado
+       na Aba 1 do PainelAbasInferior
+
+  _CONFIGURA_.gerenciador_tema
+    - tema_global() lido para cores da barra de abas e itens da árvore
+
+  _UTILITARIOS_.icones
+    - icone_tema() para todos os ícones da árvore e botões
+
+  _UTILITARIOS_.hein_context_menu
+    - heinContextMenu para o menu de contexto do FileTree
+
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+- git status roda em QThread (_WorkerGit) — nunca na thread principal
+- _WorkerGit emite dict com arquivos E pastas (status propagado por prioridade)
+- Clique simples no FileTree em modo staging NUNCA abre arquivo — togla checkbox
+- Clique simples fora de staging NUNCA abre arquivo novo — apenas troca aba
+- Modo staging ativa via abrir_painel_git (botão "Main"), NÃO via troca de aba
+- Modo staging desativa automaticamente ao trocar para aba Executável.
+- conectar_painel_arquivos() deve ser chamado UMA vez após criar os dois widgets
+- Ícones carregados via cache (_cache_icones) para evitar recarregar
+  o mesmo ícone múltiplas vezes
+- Sem strings de fonte hardcoded — ficam em _CONFIGURA_/__init__.py
+- Falha silenciosa no _WorkerGit: se git não estiver disponível ou
+  o projeto não for um repo, nenhum indicador é exibido
+
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+- _WorkerGit é QObject (não QThread direto) — deve ser movido para
+  QThread via moveToThread antes de chamar start()
+- _BarraAbas repinta a linha de borda inferior ao receber
+  QEvent.Type.StyleChange — garante atualização visual no hot-reload de tema
+- AbaInferiorBotao usa o mesmo visual (cantos arredondados + pé em S)
+  da AbaWidget da BarraTitulo para consistência visual
+- staging_checks é dict por referência — painel e delegate compartilham
+  o mesmo objeto; não criar cópia ao passar para o delegate

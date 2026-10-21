@@ -1,0 +1,288 @@
+# 📁 hein-basic/_APP_/Boas_Vindas/_DOC_BOAS_VINDAS.txt
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BOAS_VINDAS — DOCUMENTAÇÃO DO MÓDULO
+  Última atualização: 2026-08-07 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: integração GitHub na tela inicial)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OBJETIVO
+────────
+Fornecer a entrada leve da hein IDE para abrir projetos, criar projetos, clonar
+repositórios e selecionar configurações iniciais sem carregar a janela completa
+do editor antes de existir um projeto. O módulo também define a fronteira entre
+a janela inicial, a janela auxiliar aberta pelo editor e as instâncias
+independentes da IDE.
+
+RESPONSABILIDADES
+─────────────────
+• Exibir projetos recentes e ações de abrir projeto ou arquivo.
+• Iniciar a criação de um novo projeto usando destino e interpretador definidos
+  na página principal.
+• Clonar repositórios GitHub ou de outros serviços aceitos pela validação de URL.
+• Exibir o estado da sessão GitHub na coluna central sem exigir autenticação para
+  abrir ou criar projetos locais.
+• Permitir login opcional, troca entre contas salvas, adição de conta e logout.
+• Listar repositórios públicos e privados da conta GitHub ativa para clone.
+• Buscar interpretadores Python somente quando solicitado.
+• Criar a venv do projeto com o interpretador escolhido.
+• Encaminhar cada projeto escolhido para uma nova instância de main.py.
+• Encerrar o picker sem deixar sua janela ou suas threads Qt órfãs.
+• Manter uma instância completa da IDE por projeto quando o projeto é escolhido
+  pela janela inicial ou pelo menu Recentes.
+• Diferenciar o Python da IDE do Python/venv usado para executar o código do
+  projeto do usuário.
+
+ARQUIVOS
+────────
+  main.py
+    Ponto de entrada. Sem --projeto abre JanelaPicker em boot; com --projeto abre
+    MainWindow diretamente no caminho recebido.
+
+  janela_picker.py
+    Classe JanelaPicker e workers de interação do picker. Expõe
+  projeto_escolhido(str), controla os modos boot/dialog, recentes, clone,
+  configuração de venv, integração visual GitHub e ciclo de vida da janela.
+  No boot, o sinal é consumido pelo main.py para abrir a MainWindow no mesmo
+  processo; em dialog, a escolha abre uma janela independente.
+
+  lancador_projeto.py
+    Único ponto autorizado para abrir um projeto em outro processo.
+    Função principal: abrir_projeto_novo_processo(caminho).
+    O lançador usa sys.executable para rodar a própria IDE e passa
+    --projeto=<caminho> ao main.py. Ele não usa a .venv do projeto para iniciar
+    a IDE.
+
+  dialogo_novo_projeto.py
+    PainelNovoProjeto, linhas de templates e o worker _CriadorVenv.
+    O worker _BuscadorPython permanece neste módulo porque é utilizado
+    exclusivamente pela tela principal do JanelaPicker.
+
+  CONTEXTO.txt
+    Contexto histórico e regras específicas registradas para o módulo.
+
+FLUXO INTERNO
+─────────────
+Inicialização:
+  main.py
+    ├─ argumento --projeto presente
+    │    └─ MainWindow(projeto_inicial=caminho)
+    └─ sem --projeto
+         └─ JanelaPicker(modo="boot")
+
+Projeto escolhido no boot:
+  JanelaPicker.projeto_escolhido(caminho)
+    └─ main.py._abrir_projeto_no_mesmo_processo()
+         ├─ salva QSettings
+         ├─ esconde e fecha o picker
+         └─ cria MainWindow(projeto_inicial=caminho) no mesmo QApplication
+
+Projeto escolhido em uma IDE já aberta:
+  JanelaPicker.projeto_escolhido(caminho)
+    └─ _ao_projeto_escolhido()
+         ├─ salva QSettings
+         ├─ hide() imediato
+         ├─ lancador_projeto.abrir_projeto_novo_processo(caminho)
+         └─ fecha somente o picker, mantendo o editor atual
+
+Menu Arquivo da MainWindow:
+  Janela Inicial
+    └─ abre JanelaPicker(modo="dialog")
+         ├─ seleção/criação/clone
+         │    └─ Popen(sys.executable, main.py, --projeto=caminho)
+         └─ fecha somente o picker; a MainWindow atual continua aberta
+
+  Abrir Projeto...
+    └─ QFileDialog.getExistingDirectory()
+         └─ MainWindow.abrir_projeto(caminho)
+              └─ troca o projeto dentro do mesmo processo
+
+  Abrir Arquivo...
+    └─ MainWindow.abrir_arquivo(caminho)
+         └─ abre o arquivo nas abas da IDE atual; não inicia projeto novo
+
+Recentes no FileTree:
+  FileTree.recentes_clicado
+    └─ BarraAbaTopo._abrir_menu_recentes()
+         └─ _abrir_projeto_recente(caminho)
+              ├─ valida se a pasta ainda existe
+              ├─ esconde a MainWindow atual
+              ├─ lancador_projeto.abrir_projeto_novo_processo(caminho)
+              └─ agenda MainWindow.close()
+                   └─ closeEvent encerra terminais, threads, overlay e
+                      QApplication do processo anterior
+
+  Recentes não troca mais o projeto internamente. Isso evita carregar junto
+  terminais, processos, indexador, threads e estado de execução do projeto
+  anterior. O novo projeto nasce no mesmo pipeline de uma escolha feita na
+  janela inicial.
+
+Novo projeto:
+  JanelaPicker._ao_novo_projeto()
+    └─ PainelNovoProjeto.definir_config()
+          ├─ recebe destino e interpretador escolhidos na página principal
+          ├─ exibe esses valores como configuração herdada, sem campos editáveis
+          ├─ mantém os templates internamente, sem controles nesta página
+          └─ _ao_criar()
+               ├─ valida apenas o nome e os valores herdados
+               ├─ cria pasta, .gitignore e arquivos dos templates
+               ├─ emite criar_projeto(nome, destino, python_exe)
+               └─ criação de venv é executada pelo fluxo do chamador
+
+Clone:
+  JanelaPicker._executar_clone()
+    └─ QThread + _WorkerClone.run()
+          └─ GerenciadorGit.baixar_projeto()
+               ├─ mantém a URL normal
+               └─ usa credencial temporária durante o processo
+              └─ _clone_finalizado()
+                   ├─ cria venv se configurado
+                   └─ emite projeto_escolhido(caminho)
+
+GitHub na coluna central:
+  JanelaPicker._montar_estado_github()
+    ├─ config_github() → conta ativa e contas salvas
+    ├─ _PainelDeviceFlow → login opcional compartilhado
+    ├─ _trocar_conta_github() / _sair_conta_github()
+    └─ GitHubAPI.listar_repositorios() → lista da sessão ativa
+
+Busca de Python:
+  ação explícita do usuário
+    └─ _BuscadorPython.run()
+         ├─ PATH
+         ├─ Python Launcher no Windows
+         └─ diretórios comuns do sistema
+
+Execução e ambientes:
+  Processo da IDE
+    └─ sys.executable / venv da IDE
+  Código executado pelo usuário
+    └─ <projeto>/.venv/Scripts/python.exe no Windows
+       ou <projeto>/.venv/bin/python em Unix
+
+  A .venv do projeto é criada/selecionada para o código do usuário. Ela não
+  inicia a MainWindow e nunca deve substituir o interpretador da própria IDE.
+  Se o projeto não tiver .venv, a IDE ainda pode abrir; a execução do código
+  deve usar o interpretador configurado disponível ou informar que a venv
+  precisa ser criada.
+
+SINAIS / API PÚBLICA
+────────────────────
+  JanelaPicker
+    [Signal] projeto_escolhido(str)
+      Emitido ao abrir recente, abrir arquivo, concluir criação ou concluir clone.
+
+  PainelNovoProjeto
+    [Signal] criar_projeto(str, str, str)
+      Emite nome, destino e interpretador Python escolhido.
+
+    [Signal] voltar()
+      Solicita retorno à página principal do picker.
+
+  JanelaPicker
+    [Método] atualizar_recentes()
+      Recarrega a lista persistida de projetos recentes.
+
+    [Método] _atualizar_estado_github()
+      Atualiza a conta exibida e reinicia a lista de repositórios após login,
+      troca de conta ou logout.
+
+  PainelNovoProjeto
+    [Método] definir_config(pasta_destino, python_exe)
+      Recebe a configuração definida pelo picker sem pedir novamente esses dados.
+
+  MainWindow
+    [Método] abrir_janela_inicial()
+      Abre o JanelaPicker em modo dialog. O nome representa a ação real do
+      menu; a criação de projeto ocorre dentro da página Novo Projeto.
+
+INTEGRAÇÕES
+───────────
+• _CONFIGURA_ fornece caminhos, título, versão, fontes e temas.
+• _APPDATA_ fornece a infraestrutura de dados persistidos usada pela aplicação.
+• _CONFIGURA_.gerenciador_tema fornece cores do picker.
+• _UTILITARIOS_.icones fornece os ícones da interface.
+• _UTILITARIOS_.loading_overlay fornece o overlay de clone e criação de venv.
+• _PAINEL_ESQUERDO_.Git fornece o token usado ao carregar repositórios GitHub.
+  Também fornece config_github(), _PainelDeviceFlow, GitHubAPI e GerenciadorGit
+  para manter uma única sessão e uma única operação segura de clone.
+• main_window.MainWindow é o destino do processo iniciado pelo lançador.
+• _THREADS_.thread_segura é a base dos workers Python e venv.
+
+REGRAS
+──────
+• JanelaPicker não instancia PainelGit, Indexador ou TerminalTabWidget no boot.
+• Operações pesadas só podem começar por ação explícita ou pelo fluxo de criação
+  já iniciado pelo usuário.
+• O primeiro projeto, escolhido no boot, deve abrir no mesmo processo; não usar
+  Popen para a transição inicial.
+• Aberturas em nova janela devem passar por lancador_projeto.py; não duplicar
+  Popen.
+• Modo boot mantém o QApplication vivo e troca o picker pela MainWindow.
+• Modo dialog fecha somente o picker e preserva o processo do editor atual.
+• Recentes, quando acionado a partir de uma MainWindow, inicia o novo processo
+  antes de fechar o processo atual.
+• O closeEvent da MainWindow é a única rota de encerramento da IDE: ele deve
+  fechar o picker auxiliar se ele ainda estiver vivo, tolerar wrappers Qt já
+  destruídos, encerrar os processos/threads e chamar QApplication.quit().
+• WA_DeleteOnClose deve permanecer ativo na JanelaPicker.
+• closeEvent() deve desconectar sinais dos workers e usar deleteLater() quando
+  uma thread ainda estiver em execução.
+• A venv do projeto deve usar o interpretador selecionado, nunca o Python da IDE.
+• A autenticação GitHub é opcional; nenhum projeto local depende de sessão ativa.
+• O token não pode ser colocado em URL, argumento de processo, remoto persistido
+  ou log; operações Git autenticadas usam credencial temporária isolada.
+• A pasta de destino e o interpretador são escolhidos somente na página principal
+  da JanelaPicker. A página Novo Projeto apenas exibe um resumo e usa esses
+  valores; não deve repetir navegadores, lista de Pythons ou campos editáveis.
+• Na página Novo Projeto, o único dado digitado pelo usuário é o nome do projeto.
+  Os templates são carregados e usados internamente, sem controles visíveis.
+• A opção “Criar venv automaticamente” inicia marcada. Se o usuário a desmarcar,
+  o projeto é criado sem .venv automática para configuração manual posterior.
+• Uma referência Python para JanelaPicker pode sobreviver à destruição do objeto
+  C++ pelo Qt. Toda chamada posterior a isVisible(), close(), raise_() ou
+  activateWindow() deve tolerar RuntimeError e limpar a referência inválida.
+
+OBSERVAÇÕES
+───────────
+• CREATE_NO_WINDOW é aplicado ao iniciar processos no Windows.
+• close_fds=True é usado pelo lançador para reduzir o compartilhamento de handles.
+• Os seletores de arquivo e pasta usam o diálogo nativo do sistema operacional,
+  mantendo a integração com o Explorador de Arquivos do Windows.
+• Projetos em processos separados permitem manter projetos abertos simultaneamente
+  sem substituir threads e painéis do processo anterior.
+• _APPDATA_ não cria nem mantém processos Python. Ele persiste temas,
+  configurações, recentes, layouts, logs, licença e backups. A criação de cada
+  processo é responsabilidade do Zed/PowerShell na primeira execução e de
+  lancador_projeto.py nas aberturas seguintes.
+• A mensagem de tarefa concluída no Zed pertence ao processo inicial do picker;
+  o processo novo, iniciado com --projeto, é independente.
+
+PIPELINE DE ENCERRAMENTO E ABERTURA
+───────────────────────────────────
+Escolha pela janela inicial:
+  1. Salvar QSettings da seleção.
+  2. Esconder o picker e processar eventos para remover a janela antiga.
+  3. Criar MainWindow(projeto_inicial=caminho) no mesmo processo.
+  4. Fechar o picker depois que a MainWindow estiver visível.
+
+Escolha pela ação "Janela Inicial" dentro de uma IDE:
+  1. Salvar QSettings da seleção.
+  2. Esconder o picker e processar eventos para remover a janela antiga.
+  3. Criar uma nova instância com --projeto=<caminho>.
+  4. Fechar apenas o picker e manter a IDE que o abriu.
+
+Escolha em Recentes:
+  1. Ler recentes.json e validar a pasta escolhida.
+  2. Esconder a MainWindow atual.
+  3. Criar o novo processo completo com main.py --projeto=<caminho>.
+  4. Agendar o close() da MainWindow atual depois do callback do menu.
+  5. O closeEvent fecha o picker auxiliar, encerra terminais e threads,
+     fecha o FreezeGuard, aceita o evento e agenda QApplication.quit().
+  6. O novo processo inicializa sua própria QApplication, MainWindow,
+     indexador, terminais e estado do projeto.
+
+Resultado esperado:
+  • Nunca reutilizar o processo/estado do projeto anterior ao selecionar
+    Recentes.
+  • Nunca usar a .venv do usuário para rodar a própria IDE.
+  • Nunca deixar o picker destruído armazenado como uma janela válida.
+  • Nunca duplicar a lógica Popen fora de lancador_projeto.py.

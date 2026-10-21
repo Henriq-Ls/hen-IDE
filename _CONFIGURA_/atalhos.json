@@ -1,0 +1,153 @@
+// ══════════════════════════════════════════════════════════════════════
+//  atalhos.json — Atalhos de teclado da hen IDE
+//  Edite e salve — os atalhos são aplicados em tempo real (sem reiniciar).
+//  Use // em qualquer linha para comentar.
+//
+//  Formato: "tecla": "modulo::Acao"
+//  Exemplos de teclas: ctrl-s, alt-up, f5, ctrl-shift-n, ctrl-alt-f
+// ══════════════════════════════════════════════════════════════════════
+
+[
+  {
+    // ── Buscas ────────────────────────────────────────────────────────
+    // Atalhos da barra de busca universal (prefixos @, *, #, >, $, :).
+    "contexto": "Buscas",
+    "descricao": "Atalhos da barra de busca universal",
+    "atalhos": {
+      "ctrl-b":       "busca::AbrirBarra",
+      "ctrl-f":       "busca::BuscarNoArquivo",
+      "ctrl-h":       "busca::AbrirSubstituicao",
+      "ctrl-g":       "busca::IrParaLinha",
+      "ctrl-l":       "busca::BuscarMarcacao",
+      "ctrl-j":       "busca::BuscarNoProjeto",
+      "ctrl-p":       "busca::AbrirArquivoPorNome",
+      "ctrl-k":       "busca::AbrirCommandPalette"
+    }
+  },
+
+  {
+    // ── Global ────────────────────────────────────────────────────────
+    // Atalhos que funcionam em qualquer lugar da IDE.
+    "contexto": "Global",
+    "descricao": "Atalhos que funcionam em qualquer lugar da IDE",
+    "atalhos": {
+      "ctrl-s":       "editor::SalvarArquivo",
+      "ctrl-n":       "editor::NovoArquivo",
+      "ctrl-o":       "editor::AbrirArquivo",
+      "ctrl-shift-n": "ide::NovoProjeto",
+      "ctrl-shift-p": "ide::AbrirProjeto",
+
+      "ctrl-z":       "editor::Desfazer",
+      "ctrl-y":       "editor::Refazer",
+      "ctrl-shift-z": "editor::RefazerAlternativo",
+      "ctrl-a":       "editor::SelecionarTudo",
+
+
+      "f11":          "ide::TelaCheia",
+      "ctrl-shift-a":       "ide::AlternarPainelArquivos",
+      "ctrl-shift-i":     "ide::AlternarPainelIA",
+      "ctrl-shift-g":     "ide::AlternarPainelGit",
+      "ctrl-shift-t":    "terminal::AlternarVisibilidade",
+      "ctrl-shift-o":    "ide::AlternarOutline",
+      "ctrl-shift-e":    "ide::AlternarEditor",
+
+      "ctrl-alt-scoll":   "editor::AumentarFonte",
+      "ctrl-0":       "editor::ResetarFonte"
+
+    }
+  },
+
+  {
+    // ── Editor ────────────────────────────────────────────────────────
+    // Atalhos ativos apenas quando o editor de código está em foco.
+    "contexto": "Editor",
+    "descricao": "Atalhos ativos apenas quando o editor de código está em foco",
+    "atalhos": {
+    // Execução e navegação de definição
+      "f1":               "editor::ExecutarCodigo",
+      "f12":              "editor::IrParaDefinicao",
+      "ctrl-click":       "editor::IrParaDefinicaoMouse",
+      "alt-left":         "editor::VoltarDefinicao",
+
+    // Movimentação de linhas
+      "alt-up":           "editor::MoverLinhaParaCima",
+      "alt-down":         "editor::MoverLinhaParaBaixo",
+      "ctrl-shift-up":    "editor::MoverLinhaParaCima",
+      "ctrl-shift-down":  "editor::MoverLinhaParaBaixo",
+
+    // Linhas novas
+      "ctrl-enter":       "editor::NovaLinhaAbaixo",
+      "shift-enter":      "editor::NovaLinhaAbaixo",
+
+    // ctrl-home / ctrl-end  tratados nativamente pelo /editor.
+
+    // Múltiplos cursores e ocorrências
+    // ctrl-alt-up, ctrl-alt-down, ctrl-alt-p, ctrl-alt-l e ctrl-d tratados
+    // no keyPressEvent (editor_acoes.py) — QShortcut ApplicationShortcut
+    // intercepta antes do keyPressEvent E conflita com AltGr no ABNT2.
+
+      "ctrl-alt-p":   "editor::SelecionarProximaOcorrencia",
+      // ctrl-shift-f removido — conflito com busca::BuscarNoProjeto; agora em ctrl-j
+
+    // Dobramento de código
+    // ctrl--, ctrl-+ : atalhos de fold tratados diretamente no keyPressEvent do editor (editor_acoes.py)
+    // Não devem estar aqui — QShortcut intercepta antes do keyPressEvent
+    // e impede o funcionamento correto no ABNT2.
+
+    // Edição de linhas
+      "ctrl-/":         "editor::ComentarLinha",
+      "ctrl-space":     "editor::CentralizarLinha",
+      "ctrl-d":         "editor::DuplicarLinha",
+
+    // Indentação
+      "tab":              "editor::Indentar",
+      "shift-tab":        "editor::Desindentar",
+
+    // Outline e painéis
+      "ctrl-r":           "outline::AlternarFoco",
+      "alt-6":            "ide::AbrirPainelErros"
+    }
+  },
+
+  {
+    // ── Workspace ─────────────────────────────────────────────────────
+    // Atalhos de configuração, formatação e tarefas da IDE.
+    "contexto": "Workspace",
+    "descricao": "Atalhos de configuração e tarefas da IDE",
+    "atalhos": {
+    // Abrir arquivos de configuração diretamente no editor
+      "ctrl-1": "ide::AbrirTarefasDoProjeto",
+      "ctrl-2": "ide::AbrirTarefasGlobais",
+      "ctrl-3": "ide::AbrirArquivoConfiguracoes",
+      "ctrl-4": "ide::AbrirArquivoAtalhos",
+      "ctrl-5": "ide::AbrirEditorConfig",
+      "ctrl-6": "ide::AbrirAutoComplete",
+      "ctrl-7": "ide::AbrirArquivoNucleo",
+      "ctrl-8": "ide::AbrirExecutores",
+      "ctrl-9": "ide::AbrirArquivoExecutavel",
+
+
+      // Formatação e ambiente
+      "ctrl-alt-f": "ide::FormatarCodigo",  // Ctrl+Alt+F — chama Formatar Código do Núcleo
+      "ctrl-alt-a": "tarefa::CriarVenv",
+      "ctrl-alt-z": "tarefa::AtivarVenvAtualizarPip",
+      "ctrl-alt-n": "tarefa::ConfigurarNovoProjeto"
+    }
+  },
+
+  {
+    // ── Terminal ──────────────────────────────────────────────────────
+    // Atalhos ativos apenas quando o terminal está em foco.
+    "contexto": "Terminal",
+    "descricao": "Atalhos ativos apenas com o terminal em foco",
+    "atalhos": {
+      "ctrl-t": "terminal::NovoTerminal",
+      "ctrl-w":       "terminal::FecharTerminalAtivo",
+      "ctrl-shift-l": "terminal::LimparTerminal"
+    }
+  }
+]
+// obs:
+// colocar alt-tab  aqui e implementar mais navegçao por abas
+// implementar os botes tipo o 6 do mouse revert ultima coisa feita na ide
+// tipo aba fechada defaze = ultimas coisas feita pelo usuario

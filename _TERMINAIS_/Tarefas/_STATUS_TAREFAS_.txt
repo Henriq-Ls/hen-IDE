@@ -1,0 +1,56 @@
+# 📁 _TERMINAIS_/Tarefas/_STATUS_TAREFAS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Sub-módulo _TERMINAIS_/Tarefas/
+Última atualização: 2026-06-30
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+─────────────────
+
+  TarefasExplorer(QWidget) — tarefas_explorer.py
+    ✅ Painel com cards expansíveis _CardTarefa, um por tecla F2-F10
+    ✅ 4 tipos de ação: comando livre / Python / PowerShell / abrir pasta
+    ✅ Campo de diretório de trabalho com variáveis ($PROJETO etc.)
+    ✅ Botão "$" com menu de inserção de variáveis nos campos
+    ✅ Checkboxes "Mostrar terminal" e "Pausar ao terminar"
+    ✅ Botão ▶ executa a tarefa do card imediatamente
+    ✅ Botão ✕ remove o card
+    ✅ + Adicionar Tarefa (limite de 9 = F2-F10)
+    ✅ Salvar grava tarefas.json e notifica gerenciador_tarefas (hot-reload)
+    ✅ Migração de JSON antigo sem campo "atalho" (atribuição sequencial)
+    ✅ Reutilização de aba por caminho — sem duplicata
+    ✅ Suporta modo "projeto" e modo "global" no mesmo componente
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+──────────────────────────────
+
+  1. [INFORMAÇÃO NÃO CONFIRMADA] _STATUS_TERMINAIS_.txt (linhas 124-129)
+     ainda lista "TarefasExplorer — terminal compartilhado para tarefas
+     do projeto e da IDE" como pendente/"em desenvolvimento", mas o
+     componente já existe e já suporta os dois modos. Status desatualizado
+     — precisa de confirmação para corrigir.
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+
+  • Nenhum problema conhecido registrado até o momento.
+
+
+HISTÓRICO DE SESSÕES
+─────────────────────
+
+--- 2026-06-30 ---
+✅ tarefas_explorer.py movido de _TERMINAIS_/ para _TERMINAIS_/Tarefas/
+✅ __init__.py criado (exporta TarefasExplorer)
+✅ _DOC_TAREFAS_.txt e _STATUS_TAREFAS_.txt criados
+✅ Imports atualizados em _APP_/main_window.py (4 ocorrências)
+   gerenciador_tarefas.py permanece em _CONFIGURA_ (não movido —
+   escopo desta sessão foi apenas a UI)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fim do documento · atualizar a cada sessão que toque o painel de tarefas
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

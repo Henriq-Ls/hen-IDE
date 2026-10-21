@@ -1,0 +1,207 @@
+# 📁 _TERMINAIS_/Mult_Terminais/_DOC_MULT_TERMINAIS_.txt
+
+════════════════════════════════════════════════════════════════════════════════
+  MÓDULO: _TERMINAIS_/Mult_Terminais
+  Documento: _DOC_MULT_TERMINAIS_.txt
+  Última atualização: 2026-07-08
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. OBJETIVO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mult_Terminais/ agrupa os componentes de execução dedicados às linguagens
+não-Python que possuem can_run=True no seu LanguageProvider.
+
+Linguagens cobertas: JavaScript/TypeScript, Shell, Lua, Makefile.
+(Python tem fluxo próprio: RunOutputWidget em terminal_run.py.)
+
+Localização: hein/_TERMINAIS_/Mult_Terminais/
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. RESPONSABILIDADES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 ExecutorTerminal (terminal_executor.py)
+  - Widget de execução dedicado para linguagens não-Python.
+  - Recebe o nome da linguagem e o caminho do arquivo ao ser construído.
+  - Carrega o comando de execução a partir de executores.json via
+    gerenciador_executores: se o executável não estiver disponível, exibe
+    estado 'sem_ferramenta' com instrução de instalação.
+  - Dois estados visuais:
+      sem_ferramenta  → label de aviso + botão "Como instalar"
+      pronto          → campo de comando editável + botão ▶ Run + botão ■ Stop
+  - Execução via QProcess (não-bloqueante):
+      · stdout e stderr capturados e exibidos em tempo real (cores ANSI)
+      · botão ■ Stop termina o processo (terminate → kill)
+      · campo de comando editável pelo usuário antes de executar
+  - Aba reutilizada: ao pressionar F1 novamente na mesma linguagem, foca a
+    aba existente em vez de criar uma nova.
+
+2.2 ExecutorExplorer (executor_explorer.py)
+  - Painel visual para configurar executores.json.
+  - Exibido automaticamente quando o usuário abre executores.json no editor
+    (via Ctrl+8 → _ao_trocar_aba_editor_json).
+  - Uma linha por linguagem, com:
+      · Nome e status (✓ encontrado / ✗ não encontrado via shutil.which)
+      · Campo de comando editável → salva em executores.json ao pressionar Enter
+      · Botão "Como instalar" (aparece apenas quando há URL configurada)
+      · Botão "Verificar" para re-checar disponibilidade (shutil.which)
+  - Cabeçalho com botão "↺ Verificar tudo" que re-checa todas as linguagens.
+  - Aba reutilizada: _recarregar_se_necessario() compatível com o padrão dos
+    outros Explorers.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. ARQUIVOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Mult_Terminais/
+│
+├── __init__.py              # exporta ExecutorTerminal + ExecutorExplorer
+│
+├── terminal_executor.py     # ExecutorTerminal(QWidget)
+│                            #   Construtor: __init__(nome_linguagem, arquivo)
+│                            #   Estados: sem_ferramenta / pronto
+│                            #   QProcess: stdout + stderr em tempo real
+│                            #   Botões: ▶ Run, ■ Stop
+│
+├── executor_explorer.py     # ExecutorExplorer(QWidget)
+│                            #   _LinhaExecutor — linha individual por linguagem
+│                            #   _carregar() — popula de gerenciador_executores
+│                            #   _verificar_tudo() — shutil.which em loop
+│                            #   _recarregar_se_necessario() — padrão Explorer
+│
+├── _DOC_MULT_TERMINAIS_.txt # este arquivo
+└── _STATUS_MULT_TERMINAIS_.txt
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. FLUXO INTERNO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 Execução de arquivo não-Python (F1 / botão Run)
+  ──────────────────────────────────────────────────────────────────────────
+  Usuário pressiona F1 com arquivo .js / .lua / .sh / .mk aberto
+    → main_window._executar_arquivo()
+    → provider = get_provider(ext)
+    → provider.can_run == True
+    → terminal_tabs.abrir_executor_terminal(provider.name, caminho_arquivo)
+    → TerminalTabWidget: busca aba ExecutorTerminal com mesmo nome
+        Se encontrada: setCurrentIndex + atualiza arquivo → foca aba
+        Se não encontrada: cria ExecutorTerminal(nome, arquivo) → add_tab
+    → ExecutorTerminal.__init__:
+        from _CONFIGURA_.gerenciador_executores import exec_global
+        cfg = exec_global().get_config(nome)
+        if cfg['comando'] vazio ou executável não encontrado:
+            → estado 'sem_ferramenta'
+        else:
+            → estado 'pronto' → exibe campo + botão ▶
+    → Usuário clica ▶ Run:
+        QProcess.start(comando, [arquivo])
+        readyReadStandardOutput → _ao_stdout() → exibe texto + cores ANSI
+        readyReadStandardError  → _ao_stderr() → exibe em vermelho
+        finished → exibe código de saída
+  ──────────────────────────────────────────────────────────────────────────
+
+4.2 Configuração de executores (Ctrl+8)
+  ──────────────────────────────────────────────────────────────────────────
+  Usuário pressiona Ctrl+8
+    → main_window abre executores.json no editor
+    → _ao_trocar_aba_editor_json() detecta ARQUIVO_EXECUTORES
+    → instancia ExecutorExplorer() na aba de terminais
+    → ExecutorExplorer._carregar():
+        exec_global().linguagens() → cria _LinhaExecutor por linguagem
+        cada linha verifica shutil.which(cfg['comando'])
+    → Usuário edita campo + Enter → _salvar() → exec_global().set_config()
+        → json.dump → executores.json atualizado
+    → Usuário clica "Verificar" → shutil.which novamente → atualiza status
+  ──────────────────────────────────────────────────────────────────────────
+
+4.3 F1 silencioso (linguagens sem can_run)
+  ──────────────────────────────────────────────────────────────────────────
+  Usuário pressiona F1 com arquivo .sql / .xml / .txt / .dockerfile aberto
+    → provider.can_run == False
+    → main_window._executar_arquivo(): return  # silencioso
+    → nenhuma aba aberta, nenhuma mensagem exibida
+  ──────────────────────────────────────────────────────────────────────────
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. INTEGRAÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  _APP_/terminal_tab_widget.py
+    abrir_executor_terminal(nome_linguagem, arquivo):
+      - importa ExecutorTerminal de _TERMINAIS_.Mult_Terminais.terminal_executor
+      - reutiliza aba existente ou cria nova
+    fechar_aba(indice):
+      - detecta ExecutorTerminal → termina QProcess antes de fechar
+
+  _APP_/main_window.py
+    _ao_trocar_aba_editor_json():
+      - importa ExecutorExplorer de _TERMINAIS_.Mult_Terminais.executor_explorer
+      - reutiliza aba ou instancia nova
+
+  _CONFIGURA_/gerenciador_executores.py
+    exec_global() — singleton de acesso ao executores.json
+    Estrutura de executores.json:
+      {
+        "JavaScript": { "comando": "node", "url_instalacao": "https://nodejs.org" },
+        "TypeScript":  { "comando": "npx ts-node", "url_instalacao": "..." },
+        "Shell":       { "comando": "powershell.exe -File", "url_instalacao": "" },
+        "Lua":         { "comando": "lua", "url_instalacao": "https://luabinaries.sf.net" },
+        "Makefile":    { "comando": "make", "url_instalacao": "https://gnuwin32.sf.net/packages/make.htm" }
+      }
+
+  _EDITOR_/Mult_Linguas/
+    get_provider(ext).can_run → decide se ExecutorTerminal é aberto
+    get_provider(ext).name    → nome passado ao ExecutorTerminal
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. REGRAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  MT-01  ExecutorTerminal NUNCA usa subprocess.Popen diretamente — sempre
+         QProcess para não bloquear a UI thread.
+
+  MT-02  Aba ExecutorTerminal é reutilizada por nome de linguagem.
+         Nunca abrir duas abas para a mesma linguagem ao mesmo tempo.
+
+  MT-03  Imports de ExecutorTerminal e ExecutorExplorer são LAZY (dentro
+         de funções) para evitar import circular na inicialização da IDE.
+
+  MT-04  ExecutorTerminal não suporta stdin interativo na fase atual.
+         Scripts que chamam input() ou readline() travam o QProcess.
+         Fase futura: widget de input embutido.
+
+  MT-05  fechar_aba() DEVE chamar QProcess.terminate() + waitForFinished()
+         antes de removeTab() quando o widget for ExecutorTerminal.
+
+  MT-06  F1 em linguagem com can_run=False retorna silenciosamente.
+         Nunca abrir RunOutputWidget para linguagens não-Python.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. OBSERVAÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - terminal_executor.py e executor_explorer.py foram originalmente criados
+    diretamente em _TERMINAIS_/. Reorganizados para Mult_Terminais/ em
+    2026-07-08 para isolar os componentes de múltiplas linguagens dos
+    terminais Python-only (terminal_run.py, terminal_powershell.py).
+
+  - Não existem shims nos caminhos antigos. Os imports em
+    terminal_tab_widget.py (×2) e main_window.py (×1) foram atualizados
+    diretamente para o novo caminho.
+
+  - CSS/SCSS fazem parte do JavaScriptProvider mas can_run=False para eles
+    (run_extensoes=['.js','.jsx','.ts','.tsx']). O ExecutorTerminal não será
+    aberto para arquivos .css ou .scss.
+
+  - Futuro: entrada interativa (stdin) para Shell e Lua — hoje o output
+    é capturado mas não há campo de input para o processo filho.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

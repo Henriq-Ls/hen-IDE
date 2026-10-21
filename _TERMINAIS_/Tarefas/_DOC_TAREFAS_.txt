@@ -1,0 +1,150 @@
+# 📁 _TERMINAIS_/Tarefas/_DOC_TAREFAS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Sub-módulo _TERMINAIS_/Tarefas/
+Última atualização: 2026-06-30
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Painel visual (UI) para edição e execução das tarefas de atalho
+F2-F10 da hein IDE. Permite ao usuário configurar, sem editar JSON
+cru, comandos rápidos (executar arquivo, rodar script PowerShell,
+abrir pasta, etc.) vinculados a teclas de função.
+
+A lógica de execução (expansão de variáveis $VARS, leitura/escrita
+do tarefas.json, disparo do comando ao pressionar a tecla) NÃO está
+nesta pasta — vive em _CONFIGURA_/gerenciador_tarefas.py, junto com
+os demais gerenciadores de JSON da IDE (tema, atalhos, configurar,
+núcleo, templates, perfil).
+
+
+ARQUIVOS
+────────
+  tarefas_explorer.py   TarefasExplorer(QWidget)
+                         Painel visual: lista de cards expansíveis
+                         _CardTarefa, um por tecla F2-F10.
+
+                         _CardTarefa(QWidget)
+                         Card individual: combobox de atalho, nome,
+                         tipo de ação (comando/python/powershell/pasta),
+                         campo dinâmico conforme o tipo, diretório de
+                         trabalho, descrição, checkboxes de terminal/pausa.
+
+  __init__.py            Exporta: TarefasExplorer
+
+
+MODO DE USO
+───────────
+  TarefasExplorer(caminho: str, modo: str = "projeto", parent=None)
+    caminho — caminho do tarefas.json (projeto ou global)
+    modo    — "projeto" ou "global" (só muda o título exibido)
+
+  Botões do cabeçalho/rodapé:
+    📂 Tarefas        — abre a pasta de tarefas no explorador do SO
+    ?                 — exibe ajuda (variáveis disponíveis, exemplos)
+    Salvar            — grava tarefas.json e notifica o gerenciador
+    + Adicionar Tarefa — cria novo card (até o limite de 9 = F2-F10)
+
+  Variáveis disponíveis nos campos com botão "$":
+    $PYTHON   — Python do venv do projeto (ou da IDE, se não houver)
+    $PROJETO  — pasta raiz do projeto aberto
+    $ARQUIVO  — arquivo aberto no editor
+    $VENV     — pasta .venv do projeto
+    $TAREFAS  — pasta de tarefas globais
+
+
+FLUXO INTERNO
+─────────────
+
+  Abertura:
+    main_window.abrir_tarefas_projeto() / abrir_tarefas()
+      → _abrir_tarefas_explorer(caminho, modo)
+           → reutiliza aba existente (mesmo caminho) ou cria nova
+           → TarefasExplorer(caminho, modo) → _carregar()
+                → lê tarefas.json (com migração de formato antigo
+                  sem campo "atalho")
+                → um _CardTarefa por item
+
+  Execução individual (botão ▶ no card):
+    _CardTarefa._executar()
+      → coletar() monta dict da tarefa
+      → _CONFIGURA_.gerenciador_tarefas.gerenciador_tarefas()
+      → gt.executar(d)
+
+  Salvamento:
+    TarefasExplorer._salvar()
+      → coleta dados de todos os cards (coletar())
+      → json.dump no caminho do tarefas.json
+      → notifica gerenciador_tarefas (carregar_projeto_do_caminho ou
+        carregar_globais) para hot-reload dos atalhos F2-F10
+
+  Sincronização bidirecional:
+    main_window detecta mudança no JSON salvo em disco
+      → localiza TarefasExplorer com mesmo _caminho aberto
+      → chama _recarregar_se_necessario() → _carregar()
+
+
+DECISÕES TÉCNICAS
+─────────────────
+
+  UI separada da lógica (diferente do padrão Debug/):
+    Ao contrário de _TERMINAIS_/Debug/ (que reúne UI + protocolo DAP
+    na mesma pasta), aqui só a UI (tarefas_explorer.py) está em
+    _TERMINAIS_/Tarefas/. A lógica de execução/persistência
+    (gerenciador_tarefas.py) permanece em _CONFIGURA_/, pois faz
+    parte do grupo coeso de gerenciadores de configuração JSON da
+    IDE (mesmo padrão de tema/atalhos/configurar/núcleo/templates/
+    perfil). Decisão revisitável: ver _STATUS_TAREFAS_.txt.
+
+  Migração de formato antigo:
+    Itens de tarefas.json sem campo "atalho" recebem um F-key
+    sequencial (TAREFAS_FKEYS) na leitura — compatibilidade com
+    JSONs criados antes da introdução do campo.
+
+  Limite de 9 tarefas:
+    Uma tarefa por tecla de função F2 a F10. _adicionar() bloqueia
+    além desse limite.
+
+
+SINAIS / API PÚBLICA
+─────────────────────
+
+  TarefasExplorer (QWidget):
+    [Atributo]  _caminho (str) — caminho do tarefas.json vinculado
+    [Atributo]  _modo (str)    — "projeto" | "global"
+    [Método]    _carregar()    — recarrega cards a partir do JSON
+    [Método]    _salvar()      — grava JSON + notifica gerenciador
+    [Método]    _recarregar_se_necessario() — chamado em hot-reload
+
+
+INTEGRAÇÕES
+───────────
+
+  _APP_/main_window.py
+    abrir_tarefas_projeto() / abrir_tarefas()  — entradas de menu/atalho
+    _abrir_tarefas_explorer(caminho, modo)     — abre/foca aba no terminal
+    _ao_trocar_aba_editor_json()               — roteia tarefas.json → Explorer
+
+  _CONFIGURA_/gerenciador_tarefas.py
+    gerenciador_tarefas() — singleton, executa tarefas e expande $VARS
+    PASTA_TAREFAS, TAREFAS_FKEYS — constantes de _CONFIGURA_/__init__.py
+
+
+REGRAS DO SUB-MÓDULO
+─────────────────────
+
+  R1  Import de TarefasExplorer é sempre lazy (dentro de função),
+      nunca no topo do arquivo — evita import circular com main_window.
+
+  R2  Qualquer mudança no formato do dict de tarefa (chaves do JSON)
+      deve ser refletida em três lugares: _CardTarefa.coletar(),
+      _CardTarefa._aplicar_dados() e gerenciador_tarefas.py.
+
+  R3  Aba do TarefasExplorer é reutilizada por caminho (_caminho) —
+      nunca duplicar aba para o mesmo tarefas.json.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fim do documento
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,727 @@
+_EDITOR_/Editor_Hein/EDITOR_CADERNO_DOC.txt
+
+================================================================================
+  EDITOR_CADERNO — Documentação do Editor_Hein
+  Última atualização: 2026-07-28 (sessão 4)
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+O QUE É ESSE EDITOR
+────────────────────────────────────────────────────────────────────────────────
+
+Esse editor é uma versão INDEPENDENTE do Editor principal da IDE hein,
+adaptada para ser um "Editor Caderno" — voltado exclusivamente para arquivos
+com extensão .hein.
+
+Não é um editor de código. É um editor de anotações, diário, notas pessoais.
+A aparência é de uma folha de caderno pautado.
+
+REGRA DE INDEPENDÊNCIA:
+  Qualquer arquivo externo (de fora desta pasta) que precisar de modificação
+  para o Editor_Hein deve ser COPIADO para dentro desta pasta e modificado
+  aqui. Arquivos externos que não precisem de modificação podem ser importados
+  de onde estão com import relativo (..Modulo).
+
+  EXCEÇÃO ACEITA: adicionar apenas uma constante nova em _CONFIGURA_/__init__.py
+  é permitido (não altera estrutura do arquivo global). Modificar lógica ou
+  estrutura desse arquivo continua proibido.
+
+────────────────────────────────────────────────────────────────────────────────
+REGRA PRINCIPAL
+────────────────────────────────────────────────────────────────────────────────
+
+  • Só abre arquivos com extensão .hein
+  • load_file() retorna False para qualquer outra extensão
+  • O mixin_projeto.py roteia automaticamente: arquivos .hein → EditorHein
+
+────────────────────────────────────────────────────────────────────────────────
+ARQUIVOS DA PASTA (estado atual)
+────────────────────────────────────────────────────────────────────────────────
+
+  __init__.py               — Classe principal CodeEditor (alias: EditorHein)
+  _barra_salto.py           — Botões ⤒ / ⊟ / ⤓ no canto superior direito
+  _cfg_hein.py              — Constantes locais do caderno (COLUNA_LIMITE_CADERNO)
+  _code_lens.py             — Paint do viewport + overlay de pautas no gutter
+                              (NÃO é o code lens original — ver seção abaixo)
+  _cursor_personalizado.py  — Forma, piscar e animação do cursor
+  _handle_outline.py        — Alça de redimensionamento (sem uso — outline removida)
+  _inline_diff_hunk.py      — Diff git embutido (herdado, pode ser removido futuramente)
+  _numeros_linha_hein.py    — Subclasse do gutter: fold .hein + paintEvent com pautas
+  _realce_hein.py           — Realçador do caderno: negrito, itálico, tags de alinhamento
+  _autocomplete_hein.py     — Autocomplete filtrado: sem Python-noise para .hein
+  _scroll_bar_fold.py       — Marcas de fold no scrollbar (herdado, não instanciado)
+  _float_menu_hein.py       — Menu flutuante com data + seletor de cores
+  EDITOR_CADERNO_DOC.txt    — Este arquivo
+
+────────────────────────────────────────────────────────────────────────────────
+O QUE FOI REMOVIDO / SIMPLIFICADO (em relação ao Editor original)
+────────────────────────────────────────────────────────────────────────────────
+
+  ✅ Outline removida (toggle_outline → pass, _atualizar_geometria_outline sem outline)
+  ✅ Não recebe mais cores do _CONFIGURA_ (tema da IDE ignorado completamente)
+  ✅ atualizar_tema() → pass (tema escuro da IDE não interfere)
+  ✅ _configurar_tema() → chama apenas _aplicar_cores_caderno() (cores próprias)
+  ✅ Sem handle de redimensionamento de outline
+  ✅ paintEvent do CodeEditor removido (ver _code_lens.py — seção Paint do viewport)
+  ✅ Code lens "· N usos" removido — _code_lens.py reescrito do zero para o caderno
+  ✅ Autocomplete sem keywords Python, builtins, auto-import e tooltip de assinatura
+  ✅ Realce de sintaxe Python substituído por HighlighterHein para arquivos .hein
+  ✅ Lint (_ThreadLint + _timer_lint + textChanged.connect) removido de _configurar()
+  ✅ _ScrollBarFold não instanciado (import já removido; resizeEvent limpo)
+
+────────────────────────────────────────────────────────────────────────────────
+O QUE ESTÁ FUNCIONANDO HOJE
+────────────────────────────────────────────────────────────────────────────────
+
+1. VISUAL CADERNO
+   • Fundo claro creme (#FDFBF7 padrão)
+   • Texto escuro (#1A1A1A padrão)
+   • Pautas horizontais cobrindo toda a largura do editor (gutter + viewport)
+   • Pautas cobrem toda a altura, inclusive abaixo do último bloco
+   • Linha vermelha vertical na borda esquerda do viewport (margem do caderno, #C0392B)
+   • Números de linha na cor da pauta
+   • Gutter sempre com a mesma cor do fundo
+   • Gutter desenha suas próprias pautas via paintEvent em AreaNumerosLinhaHein
+     (mais confiável do que depender só do overlay — ver sessão 3)
+
+2. MENU FLUTUANTE (_FloatHeinMenu)
+   • Posicionado no canto superior direito do viewport
+   • Exibe a data atual no formato DD/MM/AA
+   • Botão ≡ abre painel inline com 3 seletores de cor:
+       - Texto  → cor do texto do editor
+       - Fundo  → cor do fundo (gutter acompanha automaticamente)
+       - Pauta  → cor das linhas horizontais do caderno
+   • Cada botão mostra a cor atual como preview colorido
+   • Ao confirmar cor, aplica imediatamente via _aplicar_cores_caderno()
+     E salva automaticamente em AppData (JSON persistente)
+   • Se reposiciona quando o editor é redimensionado
+   • Layout: [data] [≡] — sem separador vertical entre eles
+
+3. INTEGRAÇÃO COM mixin_projeto.py
+   • Importado como: from _EDITOR_.Editor_Hein import EditorHein
+   • EditorHein = CodeEditor (alias no final do __init__.py)
+   • Signals obrigatórios declarados:
+       - arquivo_salvo     Signal(str)
+       - navegar_arquivo   Signal(str, int)
+       - erros_atualizados Signal(int)
+       - arquivo_exportado Signal(str)  ← stub, nunca dispara
+   • arquivo_salvo conectado à statusbar da MainWindow:
+       self.statusBar().showMessage(f"Salvo: {nome}", 3000)
+
+4. CORES DO CADERNO — PERSISTÊNCIA
+   • _cor_fundo = "#FDFBF7"   (creme)
+   • _cor_texto = "#1A1A1A"   (quase preto)
+   • _cor_pauta = "#D8D0C8"   (cinza rosado claro)
+   • Linha vermelha de margem = "#C0392B" (fixo, não configurável pelo menu)
+   • Cores escolhidas pelo menu flutuante são salvas em:
+       %APPDATA%/hein/editor_hein_cores.json   (Windows)
+       ~/.config/hein/editor_hein_cores.json   (Linux/Mac)
+   • Carregadas automaticamente ao abrir qualquer arquivo .hein
+
+5. FOLD / DOBRAMENTO DE BLOCOS
+   • Setas de fold aparecem no gutter para qualquer linha de texto .hein
+     cujo próximo bloco não-vazio tenha recuo maior (lógica por indentação pura)
+   • Clicar na seta → toggle_dobramento() → recolher_bloco() / expandir_bloco()
+   • Ctrl+Click → Ctrl+. → comportamentos herdados do mixin
+   • Ghost BP decorativo (● cinza claro) aparece no gutter em linhas dobráveis
+     (só visual — não é breakpoint real, não interfere com os BPs do debugger)
+   • ··· aparece no número de linha quando um bloco está colapsado
+
+6. ATALHOS ESPECÍFICOS DO CADERNO
+   • Ctrl+Shift+T  → insere data como título: # Dia, DD de Mês de AAAA
+   • F4            → alterna modo leitura (sem gutter, margens largas)
+   • Ctrl+Click em [[wikilink]] → navega para o arquivo .hein referenciado
+   • Ctrl+S        → salva + exibe "Salvo: nome.hein" na statusbar por 3s
+
+7. REALCE POR ESTRUTURA (HighlighterHein)
+   • Linha sem recuo (coluna 0) → NEGRITO + cor COR_TOPICO_PAPEL  → tópico
+   • Linha indentada             → normal                          → parágrafo
+   • # em qualquer posição       → itálico + cor da pauta (comentário/observação)
+   • Tags de alinhamento (miniaturizadas — fonte menor):
+       #al:texto  → alinha à esquerda
+       #al;texto  → alinha ao centro
+       #:texto    → alinha à direita
+   • Não realça sintaxe Python — o caderno é texto estruturado por indentação
+   • Ativado via _trocar_realce_por_extensao() para ext == '.hein'
+   • ATENÇÃO Qt6: peso de fonte deve ser int(QFont.Weight.Bold) = 700
+     Usar QFont.Bold diretamente retorna valor Qt5 (75) — fora da escala
+     100–900 do Qt6 → negrito não aparece visualmente
+
+8. INDENTAÇÃO VISUAL EM LINHAS QUEBRADAS (wrap_linha = True)
+   • Quando wrap_linha está ativo, linhas longas quebram antes do menu flutuante
+     (margem direita do viewport = ReguaErros.LARGURA + float_menu.width() + 10 px)
+   • Ao quebrar, linhas de continuação mantêm o recuo do bloco original
+     (hanging indent via QTextBlockFormat.setLeftMargin + setTextIndent)
+   • Número de linha aparece APENAS na primeira sub-linha do bloco visual;
+     sub-linhas de continuação ficam em branco no gutter
+   • Implementado em _atualizar_indent_bloco_atual() / _aplicar_indent_visual()
+     conectados ao sinal textChanged com flag _atualizando_indent para evitar recursão
+
+9. AUTOCOMPLETE FILTRADO (GerenciadorAutocompleteHein)
+   • Sem tooltip de assinatura: ao_parentese_aberto() → pass
+   • Do Jedi: aceita apenas type == 'function' ou 'class' (funções/classes do usuário)
+     Remove: keyword, statement, module, param, instance, auto_import
+   • Mantém: word completion (buffer), AppData (palavras/símbolos/emojis),
+     file-path completer, snippets
+   • Colon ':' como gatilho de emoji/símbolo: mantido (útil para notas)
+
+10. GUIA VERTICAL COL-80 + HARD WRAP
+    • _CodeLensOverlay desenha linha pontilhada vertical na coluna 80
+      (cor semitransparente da pauta — não intrusiva)
+    • Hard wrap automático: ao digitar um caractere na coluna ≥ 80,
+      insere quebra de linha preservando o recuo atual do bloco
+    • Só ativo em arquivos .hein (_eh_hein())
+    • Limite configurado em COLUNA_LIMITE_CADERNO (= 80) em _CONFIGURA_/__init__.py
+
+11. COMPORTAMENTOS DE TECLADO ESPECIAIS (keyPressEvent)
+    • Enter após linha de tópico (col-0) sem ':' → insere ':' antes da quebra
+      (exemplo: "Reunião" + Enter → "Reunião:\n")
+    • ':' no final de linha indentada (sem '▸') → insere prefixo '▸ '
+      antes do conteúdo da linha, mantendo o recuo
+      (exemplo: "  tarefa:" → "  ▸ tarefa:")
+
+────────────────────────────────────────────────────────────────────────────────
+IMPLEMENTAÇÕES REALIZADAS (sessão 1 — 2025-07-21)
+────────────────────────────────────────────────────────────────────────────────
+
+PROBLEMA 1 — LINHAS DUPLAS NO EDITOR
+──────────────────────────────────────
+  Causa raiz:
+    O paintEvent do CodeEditor abria QPainter(self.viewport()) EXTERNAMENTE
+    à janela oficial de Paint do viewport. Qt usa double-buffering: pinturas
+    fora do evento de Paint vão direto para a tela (não ao backbuffer) →
+    artefato visual duplo que some no screenshot.
+
+    Simultaneamente, _CodeLensOverlay (do editor original) interceptava o
+    Paint do viewport via eventFilter e chamava QPlainTextEdit.paintEvent()
+    (implementação C++, sem as pautas) — criando dois caminhos de renderização
+    desalinhados.
+
+    Agravante: _code_lens.py havia sido deletado da pasta Editor_Hein, mas o
+    "from ._code_lens import" permanecia em __init__.py → ModuleNotFoundError
+    mascarado pelo cache .pyc do arquivo antigo.
+
+  Solução:
+    a) Criado novo _code_lens.py DENTRO de Editor_Hein/ (independente do
+       original em _EDITOR_/Editor/).
+    b) Classe _CodeLensOverlay reescrita: intercepta QEvent.Paint do viewport
+       e executa a sequência correta em UMA ÚNICA janela de Paint:
+         1. QPlainTextEdit.paintEvent()  → texto + fundo (C++ direto)
+         2. _desenhar_pautas()           → linhas horizontais + margem vermelha
+         3. _desenhar_cursor()           → cursor personalizado + multi-cursor
+    c) paintEvent override REMOVIDO do CodeEditor (__init__.py).
+    d) Espaçamento das pautas extra (abaixo do último bloco) corrigido:
+       usa int(geo.height()) da geometria real do bloco, não fontMetrics().height()
+       — que era diferente da altura real quando havia line-spacing, gerando
+       pautas desalinhadas ao rolar o documento.
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/_code_lens.py   → criado do zero
+    _EDITOR_/Editor_Hein/__init__.py     → paintEvent removido; imports atualizados
+
+PROBLEMA 2 — PAUTAS NÃO PASSAVAM PELO GUTTER
+──────────────────────────────────────────────
+  Causa raiz:
+    As pautas eram desenhadas em self.viewport(), que começa APÓS o gutter.
+    AreaNumerosLinha (gutter) é um QWidget filho separado que pinta a si mesmo
+    de forma independente — as pautas não o atravessavam.
+
+  Solução:
+    Classe _PautaGutterOverlay adicionada em _code_lens.py:
+    • Widget filho transparente (WA_TranslucentBackground + WA_TransparentForMouseEvents)
+      posicionado sobre area_numeros (o gutter).
+    • paintEvent calcula os mesmos y das pautas do viewport (firstVisibleBlock +
+      blockBoundingGeometry + dy de alinhamento entre gutter e viewport).
+    • Instanciado em _configurar() como self._pauta_gutter_overlay.
+    • sync_geometry() chamado em _atualizar_geometria_outline() e via
+      resizeEvent (indiretamente pela chamada a _atualizar_geometria_outline).
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/_code_lens.py   → classe _PautaGutterOverlay adicionada
+    _EDITOR_/Editor_Hein/__init__.py     → instanciação + sync no resize
+
+PROBLEMA 3 — FOLD SEM SETAS NO GUTTER PARA ARQUIVOS .hein
+───────────────────────────────────────────────────────────
+  Causa raiz:
+    AreaNumerosLinha tem método próprio _es_dobravel(texto, extensao) que decide
+    se uma linha recebe seta de fold no gutter. Ele cobre:
+      .py, .json, .html/.htm/.xml, .yaml/.yml, .js/.ts/.jsx/.tsx/.css/.scss/.less
+    .hein NÃO está mapeado → retorna False → zero setas para arquivos .hein.
+    (Nota: _linha_e_dobravel() do editor_dobramento.py JÁ funciona corretamente
+    para .hein via lógica de indentação pura, mas o gutter não o consultava.)
+
+  Solução:
+    Criada subclasse AreaNumerosLinhaHein em _numeros_linha_hein.py:
+    • Herda TODO o comportamento de AreaNumerosLinha (pintura, breakpoints,
+      bookmarks, git diff, hover, fold arrows) sem nenhuma outra alteração.
+    • Sobrescreve apenas _es_dobravel():
+        - extensão != '.hein' → delega ao super() (comportamento original)
+        - extensão == '.hein' → usa proximo_txt recebido do pai para verificar
+          se o próximo bloco não-vazio tem recuo maior (indentação pura)
+    • CodeEditor.__init__ passa a instanciar AreaNumerosLinhaHein no lugar
+      de AreaNumerosLinha.
+    • numeros_linha.py original (só existe como .pyc, sem fonte) NÃO foi
+      modificado — a subclasse resolve o problema sem tocar no arquivo externo.
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py  → criado do zero
+    _EDITOR_/Editor_Hein/__init__.py             → import + instanciação trocada
+
+────────────────────────────────────────────────────────────────────────────────
+IMPLEMENTAÇÕES REALIZADAS (sessão 2 — 2025-07-21)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREÇÃO 1 — ASSINATURA ERRADA DE _es_dobravel
+────────────────────────────────────────────────
+  Causa raiz:
+    numeros_linha.py linha 403 chama self._es_dobravel(texto, ext, proximo_txt)
+    — 3 argumentos. A subclasse AreaNumerosLinhaHein tinha assinatura
+    (self, texto, extensao) — 2 argumentos → TypeError.
+    A sessão anterior presumiu que o pai passava 2 args (baseado em .pyc);
+    o código-fonte real mostrou que são 3.
+
+  Solução:
+    Assinatura corrigida para (self, texto, extensao, proximo_txt="").
+    Simplificação adicional: como proximo_txt já vem pronto do pai, não
+    é mais necessário buscar o bloco no documento inteiro — o código ficou
+    mais simples e mais rápido.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py  → assinatura + lógica simplificada
+
+CORREÇÃO 2 — _code_lens.py AUSENTE / _lens_overlay SEM INSTANCIAÇÃO
+─────────────────────────────────────────────────────────────────────
+  Causa raiz:
+    _code_lens.py nunca havia sido enviado ao ambiente de edição — o arquivo
+    existia apenas na máquina local. Ao copiar a pasta do ambiente de edição
+    para a máquina, o arquivo ficou faltando.
+    Adicionalmente, a linha self._lens_overlay = _CodeLensOverlay(self) havia
+    sumido do __init__ do CodeEditor, e o alias EditorHein = CodeEditor estava
+    como comentário sem a atribuição de fato.
+
+  Solução:
+    a) _code_lens.py recriado do zero com:
+         _CodeLensOverlay  — QObject/eventFilter: paint único (texto→pautas→cursor)
+         _PautaGutterOverlay — widget transparente sobre o gutter
+         _extrair_nome_lens  — stub de compatibilidade
+    b) self._lens_overlay = _CodeLensOverlay(self) reinserido no __init__
+    c) EditorHein = CodeEditor adicionado no final do __init__.py (era só comentário)
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/_code_lens.py  → recriado
+    _EDITOR_/Editor_Hein/__init__.py    → instanciação + alias restaurados
+
+CORREÇÃO 3 — TypeError em _desenhar_cursor (assinatura de desenhar())
+──────────────────────────────────────────────────────────────────────
+  Causa raiz:
+    _GerenciadorCursorPersonalizado.desenhar() tem assinatura (self, painter, editor).
+    _CodeLensOverlay._desenhar_cursor() chamava fn(painter) — faltava o editor.
+
+  Solução:
+    Chamada corrigida para fn(painter, self._editor).
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_code_lens.py  → _desenhar_cursor corrigido
+
+FUNCIONALIDADE 1 — REALCE POR ESTRUTURA (HighlighterHein)
+───────────────────────────────────────────────────────────
+  Criado _realce_hein.py com HighlighterHein(QSyntaxHighlighter):
+    • highlightBlock(): se text[0] not in (' ', '\t') → QFont.Bold (tópico)
+                        senão → QFont.Normal (parágrafo)
+    • Sem realce de sintaxe Python — caderno é texto estruturado por indentação
+
+  __init__.py atualizado:
+    • Import de HighlighterHein adicionado
+    • _trocar_realce_por_extensao(): para ext == '.hein' instancia HighlighterHein
+      diretamente; outras extensões continuam usando o provider normal
+
+  Arquivos criados/alterados:
+    _EDITOR_/Editor_Hein/_realce_hein.py  → criado
+    _EDITOR_/Editor_Hein/__init__.py      → override de _trocar_realce_por_extensao
+
+FUNCIONALIDADE 2 — AUTOCOMPLETE FILTRADO (GerenciadorAutocompleteHein)
+────────────────────────────────────────────────────────────────────────
+  Criado _autocomplete_hein.py com GerenciadorAutocompleteHein(GerenciadorAutocomplete):
+
+    ao_parentese_aberto() → pass
+      Editor caderno não é código. Parêntese não significa chamada de função;
+      nenhum tooltip de assinatura deve aparecer.
+
+    _aplicar_completions() filtrado:
+      • Do Jedi: aceita apenas type in {"function", "class"}
+        Remove: keyword, statement, module, param, instance, auto_import.
+      • auto_import: parâmetro ignorado e descartado — sem sentido em .hein.
+      • Mantém: snippets, fontes AppData, file-path, word completion do buffer.
+
+  __init__.py atualizado:
+    • Import de GerenciadorAutocompleteHein adicionado
+    • GerenciadorAutocomplete(self) → GerenciadorAutocompleteHein(self)
+
+  Arquivos criados/alterados:
+    _EDITOR_/Editor_Hein/_autocomplete_hein.py  → criado
+    _EDITOR_/Editor_Hein/__init__.py            → import + instanciação trocados
+
+────────────────────────────────────────────────────────────────────────────────
+IMPLEMENTAÇÕES REALIZADAS (sessão 3 — 2025-07-21)
+────────────────────────────────────────────────────────────────────────────────
+
+CORREÇÃO 1 — NEGRITO NÃO APARECIA EM Qt6 (_realce_hein.py)
+────────────────────────────────────────────────────────────
+  Causa raiz:
+    setFontWeight(QFont.Bold) usa o valor numérico Qt5 (75), que está fora
+    da escala Qt6/CSS (100–900). Qt6 ignora valores < 100 → fonte ficava normal.
+
+  Solução:
+    setFontWeight(int(QFont.Weight.Bold))  → valor 700 (escala correta do Qt6)
+    setFontWeight(int(QFont.Weight.Normal)) → valor 400
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_realce_hein.py  → ambas as chamadas corrigidas
+
+CORREÇÃO 2 — REMOÇÃO DO LINT E DO SCROLLBAR_FOLD (__init__.py)
+───────────────────────────────────────────────────────────────
+  O que foi removido de _configurar():
+    • Bloco _timer_lint (QTimer + setSingleShot + setInterval + timeout.connect)
+    • textChanged.connect(self._timer_lint.start)
+    • self._scrollbar_fold = _ScrollBarFold(self) + timer + updateRequest.connect
+
+  O que foi mantido (para não quebrar encerrar_threads_bg):
+    • self._thread_lint: _ThreadLint | None = None   ← inicializado como None
+    • self._selecoes_lint: list = []
+
+  resizeEvent limpo:
+    • Bloco "if hasattr(self, '_scrollbar_fold'): ..." substituído por pass
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/__init__.py
+
+CORREÇÃO 3 — PAUTAS DO GUTTER NÃO APARECIAM (_numeros_linha_hein.py)
+──────────────────────────────────────────────────────────────────────
+  Causa raiz:
+    _PautaGutterOverlay (widget transparente filho do gutter) tinha problemas
+    de z-order — o gutter repintava por cima do overlay. As linhas eram
+    desenhadas mas ficavam invisíveis.
+
+  Solução:
+    Adicionado paintEvent() em AreaNumerosLinhaHein que:
+      1. Chama super().paintEvent(event) — pai pinta números, setas, BPs, etc.
+      2. Abre QPainter(self) próprio e desenha as pautas horizontais no gutter
+         usando as mesmas coordenadas do viewport (firstVisibleBlock +
+         blockBoundingGeometry + viewportMargins().top() como offset).
+      3. Continua desenhando abaixo do último bloco (mesmo passo de
+         fontMetrics().lineSpacing()) até o fundo do gutter.
+
+    _PautaGutterOverlay mantido em _code_lens.py mas também corrigido com
+    a mesma lógica de extras-abaixo (redundância intencional — segurança dupla).
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py  → paintEvent adicionado
+    _EDITOR_/Editor_Hein/_code_lens.py           → extras-abaixo no overlay
+
+CORREÇÃO 4 — TEXTO ULTRAPASSANDO O MENU FLUTUANTE (wrap_linha)
+───────────────────────────────────────────────────────────────
+  Causa raiz:
+    QPlainTextEdit.WidgetWidth quebra na largura do viewport. O menu flutuante
+    era filho do viewport mas a margem direita não o considerava → texto ia
+    até a borda do viewport e ficava embaixo do menu antes de quebrar.
+
+  Solução:
+    _atualizar_geometria_outline() agora calcula:
+      menu_w = self._float_menu.width() + 10   (após adjustSize())
+      right  = ReguaErros.LARGURA + menu_w
+      self.setViewportMargins(..., right, ...)
+    O viewport fica mais estreito pelo tamanho exato do menu → quebra ocorre
+    antes do menu sem criar faixa branca entre o texto e a borda do widget.
+    (Nota: a faixa branca visível é o espaço reservado do viewport; as pautas
+    do viewport já cobrem esse espaço pois são desenhadas em largura total.)
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/__init__.py  → _atualizar_geometria_outline
+
+FUNCIONALIDADE — INDENTAÇÃO VISUAL NAS QUEBRAS (hanging indent)
+────────────────────────────────────────────────────────────────
+  Problema:
+    Com wrap_linha ativo, linhas de continuação (wrap visual) começavam em
+    coluna 0 em vez de manter o recuo do bloco — "saía da tab".
+
+  Solução:
+    Dois métodos adicionados ao CodeEditor:
+
+    _atualizar_indent_bloco_atual():
+      Conectado a textChanged. Lê o bloco atual, mede largura do espaço
+      branco inicial (fontMetrics().horizontalAdvance(texto[:n])) e chama
+      _aplicar_indent_visual(). Flag _atualizando_indent evita recursão.
+
+    _aplicar_indent_visual(bloco):
+      Calcula indent_px = largura dos espaços/tabs iniciais.
+      Aplica via QTextBlockFormat:
+        setLeftMargin(indent_px)    → toda a linha de continuação começa em X
+        setTextIndent(-indent_px)   → primeira linha recua de volta para 0
+      Resultado visual:
+        • 1ª linha: começa em pixel 0 (espaços/tabs reais visíveis)
+        • Linhas de quebra: começam em indent_px (recuo preservado)
+      Otimização: verifica se o formato já está correto antes de reescrever
+      (evita modificar o documento desnecessariamente).
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/__init__.py  → dois métodos + connect em _configurar()
+
+REMOÇÃO — SEPARADOR VLine DO MENU FLUTUANTE (_float_menu_hein.py)
+─────────────────────────────────────────────────────────────────
+  Um QFrame(VLine) havia sido adicionado entre o label de data e o botão ≡.
+  Removido a pedido — layout volta a ser apenas [data] [≡].
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_float_menu_hein.py
+
+────────────────────────────────────────────────────────────────────────────────
+IMPLEMENTAÇÕES REALIZADAS (sessão 4 — 2026-07-28)
+────────────────────────────────────────────────────────────────────────────────
+
+ITEM 1 — WRAP VISUAL: NÚMERO SÓ NA PRIMEIRA SUB-LINHA
+──────────────────────────────────────────────────────
+  Comportamento anterior:
+    Gutter repetia o número do bloco em todas as sub-linhas de continuação
+    visual — ficava estranho ao rolar (ex.: "5  5  5" para um bloco de 3 linhas).
+
+  Solução:
+    paintEvent de AreaNumerosLinhaHein passou a mapear cada sub-linha visual
+    ao bloco lógico correspondente. Só a primeira sub-linha de cada bloco
+    recebe o número; as demais ficam em branco no gutter.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py
+
+ITEM 2 — NEGRITO DE TÓPICO COM COR_TOPICO_PAPEL
+─────────────────────────────────────────────────
+  Comportamento anterior:
+    Linhas de tópico (col-0) ficavam negrito mas na cor padrão do texto.
+
+  Solução:
+    HighlighterHein importa COR_TOPICO_PAPEL de _CONFIGURA_ (leitura, sem
+    modificar o arquivo). Tópicos recebem negrito + essa cor.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_realce_hein.py
+
+ITENS 3 + 12 — TAGS DE ALINHAMENTO COM MINIATURIZAÇÃO
+───────────────────────────────────────────────────────
+  Tags reconhecidas pelo HighlighterHein:
+    #al:texto   → esquerda   (tag + texto em fonte menor)
+    #al;texto   → centro     (tag + texto em fonte menor)
+    #:texto     → direita    (tag + texto em fonte menor)
+
+  O texto da tag é destacado em fonte reduzida (miniaturizado) e colorido
+  diferentemente do corpo normal — facilita distinção visual no caderno.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_realce_hein.py
+
+ITEM 4 — GUIA VERTICAL COL-80 + HARD WRAP AUTOMÁTICO
+──────────────────────────────────────────────────────
+  Guia vertical:
+    _CodeLensOverlay._desenhar_pautas() passou a desenhar uma linha vertical
+    pontilhada na coluna 80 (cor semitransparente derivada da cor da pauta).
+    A coluna 80 é lida de COLUNA_LIMITE_CADERNO em _CONFIGURA_/__init__.py.
+
+  Hard wrap:
+    keyPressEvent de CodeEditor: ao digitar um caractere imprimível
+    (sem Ctrl/Alt) com o cursor na coluna ≥ 80, insere '\n' + recuo do
+    bloco atual antes do caractere — quebra automática preservando indentação.
+    Só ativo em arquivos .hein (_eh_hein()).
+
+  Nota sobre COLUNA_LIMITE_CADERNO:
+    A constante foi adicionada diretamente em _CONFIGURA_/__init__.py
+    (= 80). Isso é permitido pela regra — apenas adiciona uma variável,
+    não altera a estrutura do arquivo global.
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/_code_lens.py  → guia vertical no overlay
+    _EDITOR_/Editor_Hein/__init__.py    → hard wrap no keyPressEvent
+    _CONFIGURA_/__init__.py             → COLUNA_LIMITE_CADERNO = 80 (adicionado)
+
+ITEM 5 — CORES DO CADERNO PERSISTIDAS EM AppData (JSON)
+─────────────────────────────────────────────────────────
+  Comportamento anterior:
+    Cores escolhidas no menu flutuante eram aplicadas na sessão mas
+    perdidas ao fechar o arquivo.
+
+  Solução:
+    Três métodos adicionados a CodeEditor:
+
+    _arquivo_cores_caderno() → str
+      Retorna o caminho do JSON:
+        Windows: %APPDATA%/hein/editor_hein_cores.json
+        Outros:  ~/.config/hein/editor_hein_cores.json
+
+    _salvar_cores_caderno()
+      Chamado por _float_menu_hein.py após cada alteração de cor.
+      Serializa {cor_fundo, cor_texto, cor_pauta} para o JSON.
+
+    _carregar_cores_caderno()
+      Chamado em load_file() ao abrir qualquer arquivo .hein.
+      Lê o JSON e aplica as cores via _aplicar_cores_caderno().
+      Tolerante a arquivo inexistente ou JSON inválido (usa padrões).
+
+    _float_menu_hein.py: cada botão de cor chama _salvar_cores_caderno()
+    após confirmar a cor nova.
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/__init__.py       → três métodos + chamada em load_file
+    _EDITOR_/Editor_Hein/_float_menu_hein.py → _salvar_cores_caderno após cada cor
+
+ITEM 6 — GHOST BP DECORATIVO EM LINHAS DOBRÁVEIS
+──────────────────────────────────────────────────
+  Um ● cinza claro (semitransparente) aparece no gutter em toda linha que
+  possui seta de fold — indicação visual discreta de que o bloco é dobrável.
+  Não é um breakpoint real: não interfere com os BPs do debugger, não é
+  clicável como BP, não persiste como estado.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py
+
+ITENS 7a + 7b — COMPORTAMENTOS ESPECIAIS DE TECLADO
+─────────────────────────────────────────────────────
+  7a — Enter após tópico sem ':':
+    keyPressEvent detecta Key_Return/Key_Enter sem modificadores.
+    Se a linha atual começa em col-0 e não termina em ':', insere ':'
+    no final antes de processar o Enter.
+    Resultado: "Reunião" + Enter → "Reunião:\n"
+
+  7b — ':' no final de linha indentada:
+    keyPressEvent detecta Key_Colon.
+    Se a linha está indentada (começa com espaço ou tab), não tem '▸'
+    e o cursor está no final da linha, insere '▸ ' após o recuo.
+    Resultado: "  tarefa:" → "  ▸ tarefa:"
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/__init__.py  → keyPressEvent
+
+ITEM 8 — Ctrl+S → STATUSBAR "Salvo: nome.hein" (3 SEGUNDOS)
+─────────────────────────────────────────────────────────────
+  Fluxo completo verificado em 2026-07-28:
+    Ctrl+S
+      → QAction "Salvar" (base.py menu Arquivo) dispara salvar_arquivo()
+      → salvar_arquivo() (mixin_projeto.py) chama editor.save_file()
+      → EditorHein.save_file() grava em daemon thread e emite arquivo_salvo(caminho)
+      → lambda conectada em _abrir_editor_hein() (mixin_projeto.py:548–550):
+          self.statusBar().showMessage(f"Salvo: {os.path.basename(cam)}", 3000)
+
+  EditorHein é registrado em tabs.editores[indice] com registrar_como_editor=True
+  → get_current_editor() o retorna corretamente.
+
+  Arquivos alterados:
+    _EDITOR_/Editor_Hein/__init__.py     → arquivo_salvo.emit(caminho) em save_file()
+    _APP_/main_window/mixin_projeto.py   → connect arquivo_salvo → statusBar em
+                                           _abrir_editor_hein() (arquivo externo —
+                                           apenas connect adicionado, sem modificar
+                                           estrutura existente)
+
+ITEM 9 — CURSOR COR = COR_GUTER_CURSOR
+────────────────────────────────────────
+  _aplicar_cores_caderno() passou a definir:
+    self._cursor_mgr._cor_hex = COR_GUTER_CURSOR
+  COR_GUTER_CURSOR importado de _CONFIGURA_ (leitura, sem modificação).
+  Cursor fica sempre sincronizado com a paleta global da IDE, independente
+  das cores do caderno (fundo/texto/pauta são próprios; cursor segue a IDE).
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/__init__.py  → _aplicar_cores_caderno
+
+ITEM 10 — '#' EM QUALQUER POSIÇÃO → ITÁLICO + COR PAUTA
+─────────────────────────────────────────────────────────
+  HighlighterHein: qualquer linha que contenha '#' (em qualquer coluna)
+  recebe formato itálico + cor da pauta atual (_cor_pauta).
+  Funciona como "comentário" no caderno — observações, marcações laterais.
+  Regra aplicada ANTES do negrito de tópico: se a linha de tópico tiver '#',
+  fica itálico + cor pauta (o '#' tem precedência visual).
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_realce_hein.py
+
+ITEM 11 — '···' NO GUTTER PARA BLOCOS COLAPSADOS
+──────────────────────────────────────────────────
+  Quando um bloco está colapsado (fold ativo), o número de linha desse
+  bloco é substituído por '···' no gutter — indicação clara de que há
+  conteúdo oculto abaixo daquela linha.
+
+  Arquivo alterado:
+    _EDITOR_/Editor_Hein/_numeros_linha_hein.py
+
+────────────────────────────────────────────────────────────────────────────────
+IMPORTS EXTERNOS — o que vem de fora e por quê NÃO foi copiado
+────────────────────────────────────────────────────────────────────────────────
+
+  Importado de fora SEM modificação (permanece no original):
+    ..Core.editor_acoes       → lógica de teclado/texto idêntica ao editor original
+    ..Core.editor_dobramento  → _linha_e_dobravel já funciona para .hein (indentação)
+    ..Core.estado_editor      → persistência de BPs/bookmarks/folds — sem alteração
+    ..Autocomplete.autocomplete → base de GerenciadorAutocompleteHein (subclasse)
+    ..Funcionalidades.*       → todas as funcionalidades herdadas sem modificação
+    ..Ui.metricas_editor      → cálculo de largura do gutter — sem alteração
+    ..Ui.numeros_linha        → base de AreaNumerosLinhaHein (subclasse)
+    _CONFIGURA_               → COR_TOPICO_PAPEL, COR_PALTA_PAPEL, COR_GUTER_CURSOR,
+                                LARGURA_MARGEM_GUTTER, COLUNA_LIMITE_CADERNO
+                                (todas lidas, nenhuma modificada)
+
+  Criado/modificado DENTRO de Editor_Hein/:
+    _code_lens.py             → recriado (paint do viewport + overlay do gutter +
+                                  guia vertical col-80)
+    _numeros_linha_hein.py    → subclasse do gutter para .hein (assinatura corrigida,
+                                  paintEvent com pautas, ghost BP, ···, wrap visual)
+    _realce_hein.py           → HighlighterHein (negrito+cor tópico, itálico #,
+                                  tags #al:/#al;/#: miniaturizadas)
+    _autocomplete_hein.py     → GerenciadorAutocompleteHein (sem Python-noise)
+    __init__.py               → editor principal (sempre fica aqui)
+
+  Arquivo externo com ADIÇÃO (variável nova apenas — estrutura intocada):
+    _CONFIGURA_/__init__.py   → COLUNA_LIMITE_CADERNO = 80
+
+  Arquivo externo com CONNECT (lógica existente — linha adicionada):
+    _APP_/main_window/mixin_projeto.py → connect arquivo_salvo → statusBar
+
+────────────────────────────────────────────────────────────────────────────────
+O QUE AINDA FALTA FAZER (pendências futuras)
+────────────────────────────────────────────────────────────────────────────────
+
+  → Remover _handle_outline.py (sem uso, herdado do editor original — zero risco)
+  → Avaliar remoção do _inline_diff_hunk.py (diff git — discutível num caderno)
+  → _scroll_bar_fold.py: import já removido, instanciação já removida — arquivo
+     morto; pode ser deletado quando confirmar que nada mais o referencia
+  → Testar hanging indent (indentação visual no wrap) com tabs mistos e com
+     fonte proporcional — fontMetrics().horizontalAdvance pode divergir do
+     deslocamento real do QTextDocument em algumas fontes
+
+────────────────────────────────────────────────────────────────────────────────
+COMO O EDITOR É ABERTO
+────────────────────────────────────────────────────────────────────────────────
+
+  mixin_projeto.py → _abrir_arquivo_selecionado(caminho)
+    └── se ext == '.hein' → _abrir_editor_hein(caminho)
+          └── from _EDITOR_.Editor_Hein import EditorHein
+              editor = EditorHein()
+              editor.set_projeto(caminho_projeto)
+              editor.navegar_arquivo.connect(self.tabs.navegar_para_arquivo)
+              editor.load_file(caminho)
+              editor.arquivo_salvo.connect(
+                  lambda cam: self.statusBar().showMessage(
+                      f"Salvo: {os.path.basename(cam)}", 3000))
+              editor.arquivo_exportado.connect(self._abrir_arquivo_selecionado)
+
+────────────────────────────────────────────────────────────────────────────────
+REGRAS QUE NÃO PODEM MUDAR
+────────────────────────────────────────────────────────────────────────────────
+
+  ❌ Não recebe tema da IDE — cores são sempre próprias do caderno
+  ❌ Não tem outline lateral
+  ❌ Não abre arquivos que não sejam .hein
+  ❌ Gutter sempre usa a mesma cor do fundo (nunca cor independente)
+  ❌ Linha vermelha vertical é a margem do caderno — não é configurável pelo menu
+  ❌ Arquivos externos modificados estruturalmente para o caderno devem ser
+     COPIADOS para esta pasta — nunca editar lógica/estrutura do original
+     (exceção: adicionar uma constante simples em _CONFIGURA_ é permitido)
+  ❌ Não copiar a pasta inteira do ambiente de edição para a máquina local:
+     copiar apenas os arquivos criados/modificados aqui; os demais ficam
+     como estão na máquina local
+
+================================================================================

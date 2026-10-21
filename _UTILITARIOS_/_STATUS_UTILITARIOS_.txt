@@ -1,0 +1,101 @@
+# 📁 _UTILITARIOS_/_STATUS_UTILITARIOS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _UTILITARIOS_ — STATUS DO MÓDULO
+  Última atualização: 2026-08-11 (Sessão [INFORMAÇÃO NÃO CONFIRMADA]: centralização de subprocessos sem console)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+────────────────
+• log_print.py — LogPrint(QObject) Singleton: output voltado ao USUÁRIO
+  Signals: nova_saida(str, str), status_msg(str), pedido_foco()
+  Métodos: info/ok/aviso/erro(msg) — emite para painel Saída + status bar
+  Separação clara com log.*: log.* → arquivo em disco; log_print.* → UI
+
+• icones.py — icone_tema() wrapper qtawesome com hot-reload de tema
+• atualizador.py — _WorkerVerifica(QThread), notifica barra_aba_topo de update
+• hein_context_menu.py — heinContextMenu(QMenu) estilizado, thema.json
+• hein_pou_pap.py — HeinPopup(QDialog): aviso/erro/info/confirmar/pacote
+  Substitui QMessageBox em toda a IDE — design consistente com menu_contexto
+• hein_venv_guard.py — exigir_pacote(): guarda acesso a libs da _venv_hein_
+  via sys.path; popup automático se pacote não instalado
+• hein_migrador_venv.py — _ThreadMigracao(QThread): migração de venv entre
+  interpretadores (freeze → rmtree → criar → install); UI não trava
+• hein_python_picker.py — hein_PythonPicker: seleção de Python do sistema
+• hein_pacotes_util.py — persistência JSON de lista de pacotes
+• gerenciador_pacotes.py — GerenciadorPacotes(QWidget) tematizado
+
+• versionamento.py — utilitário thread-safe (threading.RLock de módulo)
+  para gerenciar VERSION e CHANGELOG.md do projeto aberto.
+  API pública:
+    criar_changelog_inicial(caminho)        → publicação inicial
+    registrar_changelog_commit(caminho, msg, versao) → pós-commit (painel Git)
+    registrar_commit(caminho, msg)          → bump + CHANGELOG (IA / HEIN-GIT)
+    registrar_push(caminho)                 → entrada de push no CHANGELOG
+    checar_regressao_versao(caminho, versao)→ True se versão nova < atual
+    registrar_release(caminho, versao, desc)→ sincroniza VERSION + CHANGELOG
+  Chamado por: b__git_ui_conta, c__git_ui_projeto, ias_handlers, executavel_explorer
+
+• processo_sem_console.py — função universal para iniciar subprocessos internos
+  sem janela de console no Windows, combinando STARTUPINFO/SW_HIDE e
+  CREATE_NO_WINDOW. Consumida pelos processos auxiliares de _APP_, _EDITOR_,
+  _PAINEL_ESQUERDO_, _TERMINAIS_ e pelos utilitários que executam comandos.
+
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em andamento ativo)
+
+
+PENDENTE  🔲
+─────────────
+• (nenhum item pendente identificado)
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• hein_venv_guard: packages da _venv_hein_ adicionados via sys.path rodam
+  no mesmo processo da IDE — se um package tiver conflito de versão com
+  a IDE pode causar comportamentos inesperados
+
+
+REGRAS CRÍTICAS DESTE MÓDULO
+─────────────────────────────
+• Import de gerenciador_tema em icones.py sempre tardio (evita circular)
+• Nunca usar QMessageBox — sempre HeinPopup
+• Nunca criar QMenu customizado — sempre heinContextMenu
+• Processos internos via subprocess devem usar
+  opcoes_processo_sem_console(); aberturas visíveis ficam fora desta regra.
+
+--- 2026-06-19 Sessão 6 ---
+✅ hein_migrador_venv.py: imports adicionados; bug de indentação em _cleanup() corrigido
+✅ gerenciador_pacotes.py: tematizado
+
+--- 2026-06-29 ---
+✅ _DOC_ e _STATUS_ reescritos: 8 arquivos que estavam sem documentação foram documentados
+   (atualizador, hein_context_menu, hein_pou_pap, hein_venv_guard, hein_migrador_venv,
+   hein_python_picker, hein_pacotes_util, gerenciador_pacotes)
+
+--- 2026-07-02 Sessão 15: Bugs do .exe + Sistema log_print ---
+✅ log_print.py: NOVO — Singleton para output ao usuário (painel Saída + status bar)
+
+--- 2026-07-04 Sessão 16: Fix Crash Pacotes Fantasma ---
+✅ gerenciador_pacotes.py (_atualizar): _LinhaPacote(nome_fantasma, "", eh_fantasma=True)
+   faltava o argumento posicional obrigatório 'data' — TypeError ao listar pacotes
+
+
+--- 2026-07-18 Sessão 35: versionamento.py — utilitário thread-safe VERSION+CHANGELOG ---
+✅ versionamento.py: NOVO — threading.RLock de módulo; 6 funções públicas:
+   criar_changelog_inicial / registrar_changelog_commit / registrar_commit /
+   registrar_push / checar_regressao_versao / registrar_release
+✅ Consumido pelos 3 módulos que fazem operações git (Git, IA, Executável),
+   garantindo que VERSION e CHANGELOG.md do projeto aberto sejam sempre
+   atualizados de forma thread-safe, independente de qual fluxo disparou o commit
+    fantasma; corrigido para _LinhaPacote(nome_fantasma, "", "", eh_fantasma=True)
+
+--- 2026-08-11 Sessão [INFORMAÇÃO NÃO CONFIRMADA]: centralização de subprocessos sem console ---
+✅ processo_sem_console.py: opcoes_processo_sem_console() combina
+   STARTUPINFO/SW_HIDE com CREATE_NO_WINDOW somente no Windows.
+✅ Chamadas internas de autocomplete, criação/busca de venv, Git, diff, debug,
+   atualização e versionamento passaram a reutilizar a mesma configuração.

@@ -1,0 +1,198 @@
+// ══════════════════════════════════════════════════════════════════════
+//  nucleo.json — Configurações do Núcleo da hen IDE
+//  Edite e salve — as alterações são aplicadas automaticamente.
+//  Use // em qualquer linha para comentar.
+//
+//  Abrir: Ctrl+7 (ou menu Configurações → Núcleo)
+//  Explorer visual: abre automaticamente quando o arquivo está em foco
+//
+//  ESTRUTURA DESTE ARQUIVO:
+//    "formatar"    → formatador de imports e código
+//    "diagnostico" → análise estática automática do projeto
+//    "indice"      → indexador AST incremental
+//    "ambiente"    → localização do .venv do usuário
+//    "ia"          → qual motor de IA o Núcleo usa
+//    "documentador"→ prompt usado para documentar pastas com IA
+//    "exportar"    → o que gerar na pasta NUCLEO/ do projeto
+// ══════════════════════════════════════════════════════════════════════
+
+{
+    // ── Formatador de Código ─────────────────────────────────────────
+    // Controla o formatador automático de imports e estilo.
+    // O formatador ordena imports, adiciona linhas em branco e remove duplicatas.
+    "formatar": {
+
+        // Pastas dentro do PROJETO DO USUÁRIO que o formatador deve ignorar.
+        // (a pasta .hen guarda configurações internas da hen — não formatar)
+        "pastas_ignorar": [
+            ".hen"
+        ],
+
+        // Arquivos específicos dentro do projeto que não devem ser formatados.
+        // Útil para rascunhos ou arquivos de teste temporários.
+        "arquivos_ignorar": [
+            "Rasc.py",
+            "Rasc1.py",
+            "text.txt"
+        ],
+
+        // Pastas SEMPRE ignoradas — independente do projeto.
+        // Contêm código de terceiros, cache ou dados internos da IDE — nunca formatar.
+        "pastas_fixas_ignorar": [
+            ".venv", ".git", "__pycache__", ".idea",
+            "venv", "env", ".nox", ".tox", ".zed",
+            "node_modules", ".mypy_cache", ".pytest_cache", ".hen"
+        ],
+
+        // Após esses comandos, o formatador adiciona uma linha em branco extra.
+        // Ajuda na legibilidade — "return" encerra um bloco, linha em branco separa.
+        "palavras_pulo_linha": [
+            "return",
+            "raise",
+            "yield"
+        ],
+
+        // Prefixos que identificam módulos LOCAIS do projeto do usuário.
+        // Módulos com esses prefixos são colocados no grupo 3 dos imports (locais).
+        // Adicione o prefixo das suas pastas se não começarem com "_" ou "APP".
+        "prefixos_modulos_locais": ["_", "APP"],
+
+        // Lista de módulos tratados como biblioteca padrão do Python (stdlib).
+        // O formatador coloca esses imports no grupo 1 (acima dos de terceiros).
+        // Adicione aqui módulos de terceiros se quiser que apareçam como stdlib.
+        "stdlib_modulos": [
+            "ast", "os", "re", "sys", "io", "abc", "math", "time", "json",
+            "copy", "enum", "uuid", "glob", "gzip", "hmac", "html", "http",
+            "logging", "pathlib", "random", "shutil", "signal", "socket",
+            "string", "struct", "tempfile", "threading", "traceback", "typing",
+            "urllib", "warnings", "zipfile", "zlib", "functools", "itertools",
+            "operator", "collections", "contextlib", "dataclasses", "datetime",
+            "decimal", "fractions", "hashlib", "inspect", "pickle", "platform",
+            "pprint", "queue", "readline", "statistics", "subprocess", "textwrap",
+            "calendar", "csv", "sqlite3", "unittest", "argparse", "base64",
+            "binascii", "bisect", "builtins", "cmath", "code", "codecs",
+            "concurrent", "configparser", "ctypes", "dis", "email", "errno",
+            "fileinput", "gc", "getopt", "getpass", "heapq", "importlib",
+            "keyword", "locale", "multiprocessing", "numbers", "secrets",
+            "select", "shelve", "smtplib", "ssl", "stat", "tarfile",
+            "timeit", "token", "tokenize", "trace", "types", "venv",
+            "wave", "weakref", "webbrowser", "xml", "zipimport"
+        ]
+    },
+
+    // ── Diagnóstico Automático ───────────────────────────────────────
+    // Controla a análise estática feita pelo Núcleo sem usar IA.
+    // Limites de tamanho e alertas de qualidade de código.
+    "diagnostico": {
+
+        // Funções com mais linhas que esse limite recebem aviso de "função longa".
+        // Funções curtas são mais fáceis de ler, testar e manter.
+        "limite_linhas_funcao":  50,
+
+        // Arquivos com mais linhas que esse limite recebem aviso de "arquivo grande".
+        // Arquivos grandes geralmente devem ser divididos em módulos menores.
+        "limite_linhas_arquivo": 500,
+
+        // Pastas com mais arquivos que esse limite recebem aviso de "pasta densa".
+        "limite_arquivos_pasta": 20,
+
+        // true = avisar quando uma função é definida mas nunca chamada no projeto.
+        // Ajuda a detectar código morto.
+        "alertar_funcoes_nao_chamadas":    true,
+
+        // true = avisar quando dois arquivos se importam mutuamente (A importa B, B importa A).
+        // Dependências circulares podem causar erros difíceis de encontrar.
+        "alertar_dependencias_circulares": true,
+
+        // true = avisar quando uma pasta tem arquivos .py mas não tem __init__.py.
+        // Em Python, o __init__.py transforma uma pasta em pacote importável.
+        "alertar_modulos_sem_init":        true
+    },
+
+    // ── Indexador AST ────────────────────────────────────────────────
+    // Controla o que o indexador SQLite considera ao escanear o projeto.
+    // O índice é usado pelo autocomplete, outline e busca de símbolos.
+    "indice": {
+
+        // Pastas adicionais para ignorar na indexação (além das de "formatar").
+        // Se vazio, usa as mesmas listas de "formatar" automaticamente.
+        "pastas_ignorar":   [],
+
+        // Arquivos adicionais para ignorar na indexação.
+        // Se vazio, usa as mesmas listas de "formatar" automaticamente.
+        "arquivos_ignorar": [],
+
+        // Extensões contadas como arquivo de texto na soma total de linhas do projeto.
+        // Altera o número exibido em "Analisar projeto".
+        "extensoes_texto": [
+            ".py", ".html", ".htm", ".css", ".scss", ".less",
+            ".js", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
+            ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini",
+            ".txt", ".md", ".rst", ".xml", ".svg",
+            ".sh", ".bat", ".ps1"
+        ]
+    },
+
+    // ── Ambiente do Projeto ──────────────────────────────────────────
+    // Localização da venv do projeto do usuário.
+    // O Núcleo usa essa informação para executar comandos no contexto correto.
+    "ambiente": {
+
+        // Nome padrão da pasta do ambiente virtual dentro do projeto.
+        // Deve coincidir com o valor em autocomplete.json → ambiente → pasta_venv.
+        "pasta_venv": ".venv"
+    },
+
+    // ── Configurações de IA do Núcleo ────────────────────────────────
+    // Define qual motor de IA o Núcleo usa para diagnósticos avançados
+    // e documentação automática.
+    "ia": {
+
+        // "ollama"  → IA local rodando no computador do usuário (privada, sem internet)
+        // "rede"    → usa o provedor configurado no Painel de IA da hen
+        "provedor_preferido": "ollama"
+    },
+
+    // ── Documentador Automático ──────────────────────────────────────
+    // Configurações do gerador de documentação de projetos com IA.
+    // O documentador analisa pastas e arquivos e escreve a documentação.
+    "documentador": {
+
+        // Instrução de sistema enviada para a IA ao documentar o projeto.
+        // Edite aqui para mudar o estilo, idioma ou nível de detalhe da documentação.
+        "system_prompt": "Você é um assistente técnico que documenta projetos de software. Responda em português, de forma direta e objetiva.",
+
+        // Mínimo de arquivos documentáveis que uma pasta precisa ter para gerar _DOC_.
+        // Pastas com menos arquivos que isso são ignoradas pelo documentador.
+        "min_arquivos_pasta": 1,
+
+        // Extensões que o documentador considera ao varrer pastas sem Python.
+        // Pastas que contenham apenas arquivos fora desta lista são ignoradas.
+        "extensoes_docaveis": [
+            ".py", ".md", ".txt", ".rst",
+            ".html", ".htm", ".css", ".scss",
+            ".js", ".ts", ".jsx", ".tsx",
+            ".json", ".yaml", ".yml", ".toml",
+            ".sh", ".bat", ".sql"
+        ]
+    },
+
+    // ── Exportação — pasta NUCLEO/ ───────────────────────────────────
+    // Controla o que é gerado na pasta NUCLEO/ na raiz do projeto do usuário.
+    // Essa pasta contém documentação automática e análise do projeto.
+    "exportar": {
+
+        // true = gerar um README.md automático com visão geral do projeto
+        "gerar_readme":        true,
+
+        // true = gerar um documento de arquitetura (mapa de módulos e dependências)
+        "gerar_arquitetura":   true,
+
+        // true = gerar documentação de cada módulo/arquivo automaticamente
+        "gerar_documentacao":  true,
+
+        // true = atualizar a pasta NUCLEO/ automaticamente antes de cada git push
+        // A documentação fica sempre sincronizada com o código no repositório
+        "gerar_antes_do_push": true
+    }
+}

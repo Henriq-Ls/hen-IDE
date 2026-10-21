@@ -1,0 +1,597 @@
+# 📁 _LOG_/_DOC_LOG_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _LOG_ — DOCUMENTAÇÃO DO SISTEMA DE LOGS
+  Última atualização: 2026-08-10
+  Revisão: FileHandler síncrono + diagnóstico estruturado de workers
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+O sistema de logs da hein IDE possui duas camadas complementares:
+
+1. LOG OPERACIONAL
+   Mensagens legíveis da aplicação: INFO, DEBUG, OK, AVISO, ERRO e EXCEC.
+   É produzido por `_LOG_/log.py` e enviado ao arquivo de sessão em
+   `PASTA_APPDATA/hein.log`.
+
+2. DIAGNÓSTICO ESTRUTURADO DE WORKERS
+   Eventos técnicos do ciclo de vida de QThread, QRunnable, QObject-worker,
+   subprocessos e editores. Cada tarefa recebe um identificador correlacionável
+   e cada linha usa o prefixo `[WORKER_DIAG]`.
+   É produzido por `_THREADS_/diagnostico_workers.py`.
+
+ As duas camadas podem aparecer na mesma investigação, mas possuem arquivos
+ separados no mesmo diretório AppData. O nome diferente evita confundir o
+ diagnóstico com o log operacional.
+
+
+DESTINOS ATUAIS
+───────────────
+LOG OPERACIONAL:
+  caminho definido por `_CONFIGURA_.PASTA_APPDATA`:
+
+    PASTA_APPDATA/hein.log
+
+  O caminho absoluto pode ser obtido por:
+
+    log.caminho_arquivo()
+
+DIAGNÓSTICO DE WORKERS:
+  caminho calculado por `_THREADS_/diagnostico_workers.py`:
+
+    PASTA_APPDATA/hein_workers.log
+
+  O diagnóstico remove o conteúdo da sessão anterior e abre um handle
+  compartilhado durante a importação do módulo. Ele escreve diretamente no
+  arquivo usando um lock e flush por evento. O handle é reutilizado pelos
+  workers; o arquivo não é aberto novamente a cada evento dentro da thread de
+  execução. O arquivo é criado no AppData, tanto no sandbox quanto na versão
+  executável.
+  Essa escrita é deliberada: o diagnóstico precisa continuar registrando
+  eventos mesmo quando o logger principal não está disponível, está encerrando
+  ou quando uma falha de thread impede o fluxo normal da aplicação.
+
+IMPORTANTE:
+  Os dois arquivos ficam no mesmo diretório AppData, mas têm nomes distintos:
+
+    hein.log          — log operacional
+    hein_workers.log  — diagnóstico estruturado
+
+  Para investigar workers, procurar explicitamente por:
+
+    PASTA_APPDATA/hein_workers.log
+
+
+ARQUITETURA DO LOG OPERACIONAL
+──────────────────────────────
+`_LOG_/log.py` usa `logging.FileHandler` síncrono da biblioteca padrão.
+
+  • Não existe `_worker_disco`.
+  • Não existe fila de mensagens.
+  • Não existe `QueueListener`.
+  • A linha é gravada pelo próprio thread que chamou `log.info()`,
+    `log.erro()` etc.
+  • O lock interno do `FileHandler` protege a escrita concorrente.
+  • A escrita não usa `Condition.wait()` nem espera alertable do Windows.
+
+Essa arquitetura evita introduzir uma thread de logging bloqueada em espera,
+o que era especialmente relevante para o erro Windows `0x8001010d`.
+
+
+INICIALIZAÇÃO E ENCERRAMENTO
+────────────────────────────
+Na importação de `_LOG_.log`:
+
+  log = _SistemaLog()
+
+O sistema:
+
+  1. cria a pasta de destino;
+  2. remove o `hein.log` anterior da pasta de AppData;
+  3. abre o handle direto usado pelo faulthandler;
+  4. escreve o cabeçalho da sessão;
+  5. configura o `logging.FileHandler` síncrono.
+
+`log.iniciar_worker()` permanece na API apenas por compatibilidade com versões
+anteriores. Atualmente é um no-op intencional e não deve ser interpretado como
+início de thread.
+
+Encerramento recomendado:
+
+  app.aboutToQuit.connect(log.encerrar)
+
+`log.encerrar()` remove o FileHandler, faz flush, fecha o arquivo operacional e
+fecha o handle direto do faulthandler.
+
+
+FORMATO DO LOG OPERACIONAL
+──────────────────────────
+Formato normal:
+
+  YYYY-MM-DD HH:MM:SS [NIVEL] arquivo.py › metodo — mensagem | dado
+
+Exemplos:
+
+  2026-08-10 14:36:01 [INFO] janela_picker.py › _buscar_pythons — iniciando busca
+  2026-08-10 14:36:02 [AVISO] validador.py › verificar — módulo não encontrado
+  2026-08-10 14:36:03 [ERRO] lint.py › run — falha ao analisar arquivo
+
+Quando `dado` é dict ou list, ele é serializado em JSON na mesma linha.
+
+Níveis públicos:
+
+  INFO   — operação normal.
+  DEBUG  — detalhe interno de execução.
+  OK     — operação concluída com sucesso.
+  AVISO  — situação não crítica.
+  ERRO   — erro recuperável ou falha de uma operação.
+  EXCEC  — exceção com o traceback retornado por `traceback.format_exc()`.
+
+
+FORMATO DE CRASH E FAULTHANDLER
+───────────────────────────────
+`log.crash()` e `log.fault()` não passam pelo FileHandler. Eles escrevem uma
+seção diretamente no arquivo operacional, para continuar funcionando durante
+encerramento ou falha grave.
+
+Exemplo:
+
+  [2026-08-10 14:36:57] ════════════════════ CRASH ════════════════════
+  [2026-08-10 14:36:57] [main.py.excepthook]
+  Traceback (most recent call last):
+    ...
+  ────────────────────────────────────────────────────────────
+
+O handle `log.arquivo_direto` é aberto no início da sessão e pode ser passado
+ao `faulthandler` em `main.py`. O faulthandler escreve diretamente no handle;
+não passa pela API normal de `log`.
+
+
+ESQUEMA DO DIAGNÓSTICO `[WORKER_DIAG]`
+──────────────────────────────────────
+Cada evento é uma linha independente, iniciada por:
+
+  [WORKER_DIAG]
+
+Depois do prefixo, os campos são gravados como pares `chave=valor`.
+Os valores são serializados com JSON, preservando strings, listas, dicts e
+caracteres Unicode:
+
+  [WORKER_DIAG] timestamp="..." event="..." component="..." task="..." ...
+
+Campos padrão presentes em cada evento:
+
+  timestamp
+      Data/hora ISO com milissegundos.
+
+  event
+      Nome do evento do ciclo de vida ou da operação diagnosticada.
+
+  component
+      Componente responsável pela tarefa, por exemplo `PYTHON_SEARCH`,
+      `VENV`, `CLONE`, `LINT`, `DIFF`, `OUTLINE`, `IMPORT`, `AC` ou `INDEX`.
+
+  task
+      Identificador correlacionável da tarefa, por exemplo `PYTHON_SEARCH-0001`.
+      Quando não existe uma task, aparece `"-"`.
+
+  edit_generation
+      Geração do conteúdo do editor no momento do evento. É usada para
+      diferenciar resultados antigos de resultados posteriores à edição.
+
+  editor_id
+      ID Python do editor associado, ou `0` quando não há editor.
+
+  arquivo
+      Caminho do arquivo associado ao editor, ou string vazia.
+
+  py_id
+      ID Python do objeto diagnosticado, ou `0`.
+
+  qt_thread
+      ID Python do `QThread.currentThread()` observado, quando PySide6 está
+      disponível. Pode ficar vazio em testes sem Qt.
+
+  native_thread_id
+      ID nativo retornado por `threading.get_ident()`.
+
+Após os campos padrão, cada evento pode adicionar campos específicos, como
+`candidate`, `executable`, `arguments`, `returncode`, `error`, `reason`,
+`result_count`, `before_py_id` ou `after_py_id`.
+
+
+EXEMPLO DE LINHAS ESTRUTURADAS
+──────────────────────────────
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.120" event="CREATE" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=0 qt_thread="..." native_thread_id=1234
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.121" event="OBJECT_BOUND" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=1234
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.130" event="RUN_ENTER" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=5678 search_scope="PATH,py --list-paths,known Windows locations"
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.145" event="SUBPROCESS_START" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=5678 executable="C:\\Python\\python.exe" arguments=["--version"] output_file="..."
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.180" event="SUBPROCESS_RETURN" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=5678 executable="C:\\Python\\python.exe" arguments=["--version"] returncode=0
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.181" event="RESULT_EMITTED" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=5678 candidate="C:\\Python\\python.exe" version="3.13.0" result_count=1
+
+  [WORKER_DIAG] timestamp="2026-08-10T14:36:00.190" event="RUN_EXIT" component="PYTHON_SEARCH" task="PYTHON_SEARCH-0001" edit_generation=0 editor_id=0 arquivo="" py_id=4567 qt_thread="..." native_thread_id=5678 result_count=1 candidate_count=1
+
+
+EVENTOS PADRONIZADOS
+────────────────────
+Criação e associação:
+
+  CREATE
+      Task criada por `new_task()`.
+
+  OBJECT_BOUND
+      Task associada a um objeto Python/Qt por `bind()` ou `ensure_task()`.
+
+  EDITOR_CREATED
+      Editor registrado pelo sistema de diagnóstico.
+
+  EDIT
+      Geração do editor incrementada após edição.
+
+Início e execução:
+
+  START_REQUESTED
+      Início solicitado ao pool ou à QThread.
+
+  RUN_ENTER
+      Entrada efetiva no método de execução do worker.
+
+  RESULT_EMITTED
+      Resultado ou sinal emitido pelo worker. Alguns workers também emitem
+      esse evento no encerramento para registrar contadores finais.
+
+  ERROR
+      Exceção ou erro tratado durante a execução.
+
+  RUN_EXIT
+      Saída do método de execução, normalmente emitida em `finally`.
+
+Encerramento:
+
+  QUIT_REQUESTED
+      Pedido de encerramento gracioso.
+
+  CANCEL_REQUESTED
+      Pedido de cancelamento de uma operação.
+
+  WAIT_BEGIN / WAIT_END
+      Início e resultado de uma espera de encerramento.
+
+  TERMINATE
+      Encerramento forçado depois de a espera normal não concluir.
+
+  FINISHED
+      QThread observada como finalizada.
+
+  DESTROYED
+      Objeto Qt destruído depois de ter sido associado à tarefa.
+
+Referências:
+
+  REFERENCE_ZERO
+  REFERENCE_REMOVE
+  REFERENCE_REPLACE
+      Alterações diagnosticadas nas referências do controlador para workers e
+      threads. Os campos `attribute`, `before_py_id` e `after_py_id` ajudam a
+      identificar a substituição ou remoção.
+
+
+EVENTOS ESPECÍFICOS DA BUSCA DE PYTHON
+──────────────────────────────────────
+O componente `PYTHON_SEARCH` foi instrumentado para o caso do erro
+`Windows fatal exception: code 0x8001010d`.
+
+Busca no PATH:
+
+  PATH_CANDIDATE
+      Caminho que será consultado.
+
+  PATH_MATCH
+      Caminho existente encontrado no PATH.
+
+  PATH_STAT_ERROR
+      Falha de filesystem ao consultar um candidato.
+
+Teste de candidatos:
+
+  CANDIDATE_TEST_BEGIN
+      O executável será executado para verificar a versão.
+
+  CANDIDATE_TEST_END
+      O teste terminou, com `accepted=true` ou `accepted=false`.
+
+  CANDIDATE_SKIPPED
+      Candidato ignorado por duplicidade, arquivo inexistente, ser o Python
+      da própria IDE ou ser um stub de `WindowsApps`.
+
+Subprocessos:
+
+  SUBPROCESS_START
+      `Popen` iniciado. Registra `executable`, `arguments` e, quando usado,
+      `output_file`.
+
+  SUBPROCESS_RETURN
+      `wait()` terminou e registra `returncode`.
+
+  SUBPROCESS_TIMEOUT
+      O limite de espera foi atingido antes do processo terminar.
+
+  SUBPROCESS_ERROR
+      Exceção durante a abertura, espera, leitura ou limpeza do subprocesso.
+
+O último evento antes de um crash nativo pode indicar se a falha ocorreu:
+
+  • durante a consulta do PATH;
+  • no `Popen`;
+  • no `wait()` de `py --list-paths`;
+  • no `wait()` de `python --version`;
+  • na leitura do arquivo temporário;
+  • ou depois do subprocesso, durante o processamento do resultado.
+
+
+CICLO DE VIDA DE UMA TASK
+─────────────────────────
+Fluxo esperado:
+
+  CREATE
+    ↓
+  OBJECT_BOUND
+    ↓
+  START_REQUESTED
+    ↓
+  RUN_ENTER
+    ↓
+  RESULT_EMITTED / ERROR
+    ↓
+  RUN_EXIT
+    ↓
+  FINISHED ou DESTROYED
+
+Nem todo worker produz exatamente todos os eventos. Por exemplo:
+
+  • um worker pode falhar antes de emitir resultado;
+  • um QThread pode ter `START_REQUESTED` automático da classe-base;
+  • uma referência pode ser removida antes de `FINISHED`;
+  • um encerramento forçado pode gerar `TERMINATE`.
+
+O campo `task` é o principal eixo de correlação. Para analisar uma execução,
+filtrar todas as linhas com a mesma task e ordenar por `timestamp`.
+
+O mapa interno `_ATIVOS` remove a task quando ocorre `RUN_EXIT`, `FINISHED` ou
+`DESTROYED`. Esse mapa é apenas diagnóstico e não controla o ciclo de vida
+real dos objetos.
+
+
+COMPONENTES JÁ COBERTOS
+───────────────────────
+  PYTHON_SEARCH
+      `_APP_/Boas_Vindas/dialogo_novo_projeto.py`
+      Busca de interpretadores Python e seus subprocessos.
+
+  VENV
+      Criação do ambiente virtual.
+
+  CLONE
+      Clone Git e QThread manual do Picker.
+
+  LINT
+      Lint Python em QRunnable.
+
+  DIFF
+      Diff Git da calha do editor.
+
+  CORRETOR
+      Corretor ortográfico em QRunnable.
+
+  REINDEX
+      Reindexação após salvar.
+
+  OUTLINE / OUTLINEBUSCA
+      Outline do arquivo e busca do Outline.
+
+  IMPORT
+      Validação de imports Python.
+
+  AC
+      Consultas de autocomplete.
+
+  INDEX / ANALISE / FIND_FILES
+      Outros workers instrumentados do editor e da janela principal.
+
+
+ARQUIVOS E RESPONSABILIDADES
+────────────────────────────
+  `_LOG_/log.py`
+      API operacional, FileHandler síncrono, cabeçalho de sessão, crash,
+      faulthandler e encerramento.
+
+  `_LOG_/log_signal.py`
+      Sinal Qt `log_signal.nova_entrada(str, str)`.
+
+  `_LOG_/painel_logs.py`
+      Painel visual. Recebe o log interno por `log_signal` e também a saída
+      do usuário por `_UTILITARIOS_.log_print`.
+
+  `_THREADS_/diagnostico_workers.py`
+      Esquema `[WORKER_DIAG]`, tasks, contexto, correlação de editores,
+      referências, eventos de início/fim e escrita direta de diagnóstico.
+
+  `_THREADS_/thread_segura.py`
+      Base de QThread que registra início/finalização e protege o COM no
+      Windows conforme a política da IDE.
+
+  `_THREADS_/ciclo_vida.py`
+      Encerramento centralizado de QThread/QProcess com QUIT, WAIT,
+      TERMINATE e FINISHED.
+
+
+API OPERACIONAL PÚBLICA
+───────────────────────
+  log.info(arquivo, metodo, mensagem, dado=None)
+      Mensagem informativa.
+
+  log.debug(arquivo, metodo, mensagem, dado=None)
+      Detalhe de depuração.
+
+  log.ok(arquivo, metodo, mensagem, dado=None)
+      Sucesso.
+
+  log.aviso(arquivo, metodo, mensagem, dado=None)
+      Aviso não crítico.
+
+  log.erro(arquivo, metodo, mensagem, dado=None)
+      Erro recuperável.
+
+  log.excecao(arquivo, metodo, mensagem)
+      Registra a mensagem e o traceback da exceção atual.
+
+  log.crash(arquivo, metodo, texto)
+      Escreve seção direta para crash Python não tratado.
+
+  log.fault(texto)
+      Escreve seção direta de faulthandler.
+
+  log.flush_forcado()
+      Faz flush e `fsync` do FileHandler em pontos críticos.
+
+  log.caminho_arquivo()
+      Retorna o caminho do log operacional em AppData.
+
+  log.arquivo_direto
+      Handle do arquivo operacional usado pelo faulthandler.
+
+  log.iniciar_worker()
+      No-op de compatibilidade. Não inicia thread.
+
+  log.encerrar()
+      Fecha os handles do logger operacional.
+
+
+API DE DIAGNÓSTICO DE WORKERS
+─────────────────────────────
+  event(evento, component, task, obj=None, editor=None,
+        edit_generation=None, **extra)
+      Escreve um evento estruturado sem deixar exceções escaparem.
+
+  new_task(component, editor=None, edit_generation=None)
+      Cria um ID de task e registra `CREATE`.
+
+  bind(obj, component, task, editor=None, edit_generation=None)
+      Associa contexto ao objeto e registra `OBJECT_BOUND`.
+
+  ensure_task(obj, component, editor=None, edit_generation=None)
+      Reutiliza a task existente ou cria e associa uma nova.
+
+  start_requested(obj, component=None, task="")
+      Registra solicitação de início.
+
+  thread_started(obj, component=None, task="")
+      Alias usado pela base de QThread para registrar o início.
+
+  result_emitted(obj, component=None, task="", **extra)
+      Helper para registrar resultado.
+
+  thread_finished(obj, component=None, task="", **extra)
+      Helper usado pela base de QThread para registrar finalização.
+
+  reference(action, component, owner, attr, before=None, after=None,
+            editor=None, task="", **extra)
+      Registra substituição, remoção ou zeragem de referência.
+
+  active_tasks(editor)
+      Retorna as tasks ainda ativas para um editor.
+
+
+REGRAS DE USO
+─────────────
+LOG OPERACIONAL:
+
+  • Usar `log.*()` em vez de `print()` no código da IDE.
+  • Não abrir manualmente o arquivo operacional fora de `_LOG_/log.py`.
+  • Não criar uma thread própria somente para gravar logs.
+  • Conectar `log.encerrar` a `app.aboutToQuit`.
+  • Usar `flush_forcado()` apenas em pontos diagnósticos críticos.
+
+DIAGNÓSTICO DE WORKERS:
+
+  • Não alterar comportamento funcional ao adicionar eventos.
+  • Criar uma task no ponto em que a operação nasce.
+  • Associar a task ao worker, QThread ou objeto de sinais.
+  • Reutilizar a mesma task em todos os eventos da execução.
+  • Registrar `RUN_EXIT` em `finally` quando o worker possuir execução própria.
+  • Registrar `ERROR` para exceções tratadas.
+  • Registrar `RESULT_EMITTED` depois da emissão do resultado.
+  • Registrar substituição/remoção de referências antes de descartar a
+    referência do controlador.
+  • Não usar IDs como prova de identidade entre processos; eles servem para
+    correlação dentro da sessão.
+  • Não registrar segredos, tokens, senhas ou conteúdo sensível.
+  • Não fazer o diagnóstico lançar exceção para a aplicação.
+
+ENCERRAMENTO:
+
+  • Preferir `_THREADS_/ciclo_vida.py` para QThread/QProcess quando a política
+    original permitir.
+  • Não conectar `thread.finished` ao próprio `thread.deleteLater` em uma
+    QThread da classe `_ThreadSegura`.
+  • `worker.deleteLater` e `thread.deleteLater` só devem ser usados quando
+    forem objetos distintos e a arquitetura existente já depender desse
+    padrão.
+  • Os eventos de diagnóstico não substituem `quit()`, `wait()` ou
+    `terminate()`; eles apenas registram o que o código fez.
+
+
+COMO INVESTIGAR UMA SESSÃO
+──────────────────────────
+1. Localizar o arquivo de log da sessão correspondente.
+2. Procurar por `[WORKER_DIAG]`.
+3. Filtrar pela `task` da operação problemática.
+4. Ordenar os eventos pelo `timestamp`.
+5. Comparar:
+     `py_id`       — objeto Python;
+     `qt_thread`   — thread Qt observada;
+     `native_thread_id` — thread nativa;
+     `editor_id` e `edit_generation` — contexto do editor.
+6. Verificar o último evento antes do crash.
+7. Cruzar esse evento com as linhas operacionais INFO/AVISO/ERRO da mesma
+   sessão.
+
+Para o erro `0x8001010d` no buscador de Python, procurar especialmente:
+
+  component="PYTHON_SEARCH"
+
+e observar a sequência ao redor de:
+
+  PATH_CANDIDATE
+  PATH_MATCH
+  CANDIDATE_TEST_BEGIN
+  SUBPROCESS_START
+  SUBPROCESS_RETURN
+  SUBPROCESS_TIMEOUT
+  SUBPROCESS_ERROR
+  RESULT_EMITTED
+  RUN_EXIT
+  FINISHED
+
+
+OBSERVAÇÕES
+───────────
+  • O logger operacional começa cada sessão com o arquivo de AppData limpo.
+  • O diagnóstico estruturado inicia uma sessão limpa em `hein_workers.log`,
+    mantém o handle durante o processo e fecha-o no encerramento.
+  • Uma falha no logger operacional não deve interromper a IDE.
+  • Uma falha na escrita do diagnóstico é silenciosamente ignorada para não
+    alterar o comportamento funcional do worker.
+  • O diagnóstico registra IDs e caminhos, mas não captura automaticamente
+    uma stack trace nativa do Windows. Para isso, usar o faulthandler e o
+    registro operacional de crash.
+  • O prefixo `[WORKER_DIAG]` é o marcador confiável para separar eventos
+    estruturados de mensagens operacionais comuns.

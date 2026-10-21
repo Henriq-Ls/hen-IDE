@@ -1,0 +1,32 @@
+{
+    "JavaScript": {
+        "comando": "node",
+        "instalacao_tipo": "sistema",
+        "instalacao_url": "https://nodejs.org",
+        "instalacao_dica": "Baixe e instale o Node.js no site oficial. Após instalar, reinicie a IDE."
+    },
+    "TypeScript": {
+        "comando": "npx ts-node",
+        "instalacao_tipo": "sistema",
+        "instalacao_url": "https://nodejs.org",
+        "instalacao_dica": "Requer Node.js. Após instalar o Node.js, execute no terminal: npm install -g ts-node"
+    },
+    "Shell": {
+        "comando": "powershell.exe -ExecutionPolicy Bypass -File",
+        "instalacao_tipo": "sistema",
+        "instalacao_url": "",
+        "instalacao_dica": "PowerShell já vem instalado no Windows 10 e 11."
+    },
+    "Lua": {
+        "comando": "C:\\Users\\hls\\Downloads\\lua-5.5.0",
+        "instalacao_tipo": "sistema",
+        "instalacao_url": "https://www.lua.org/download.html",
+        "instalacao_dica": "Baixe e instale o Lua no site oficial. No Windows, use LuaForWindows. Após instalar, reinicie a IDE."
+    },
+    "Makefile": {
+        "comando": "make",
+        "instalacao_tipo": "sistema",
+        "instalacao_url": "https://www.gnu.org/software/make/",
+        "instalacao_dica": "No Windows, instale via chocolatey: choco install make. No Linux/macOS, use o gerenciador de pacotes."
+    }
+}

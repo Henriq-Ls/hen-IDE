@@ -1,0 +1,176 @@
+# 📁 _TERMINAIS_/Debug/_DOC_DEBUG_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Sub-módulo _TERMINAIS_/Debug/
+Última atualização: 2026-06-30
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+OBJETIVO
+────────
+Implementar o depurador integrado da hein IDE usando o protocolo
+DAP (Debug Adapter Protocol) com debugpy como backend.
+Permite pausar execução, inspecionar variáveis e navegar pelo
+código sem nenhum plugin externo — tudo dentro da IDE.
+
+
+ARQUIVOS
+────────
+  cliente_dap.py    ClienteDAP(QThread)
+                    Protocolo DAP completo sobre socket TCP.
+                    Handshake, loop de mensagens, breakpoints,
+                    controles de fluxo, leitura de variáveis.
+
+  painel_debug.py   PainelDebug(QWidget)
+                    UI de controle do depurador: botões de fluxo,
+                    QTreeWidget de variáveis, estados visuais.
+                    Instancia e gerencia o ciclo de vida do ClienteDAP.
+
+  __init__.py       Exporta: PainelDebug, ClienteDAP
+
+
+FLUXO INTERNO
+─────────────
+
+  Início da sessão:
+    main_window._iniciar_debug()
+      → coleta breakpoints do NumeroLinhas do editor ativo
+      → TerminalTabWidget.abrir_aba_debug(arquivo)
+      → PainelDebug.iniciar_sessao(arquivo, python_path, breakpoints)
+           → ClienteDAP._iniciar_processo()
+                → subprocess: python -m debugpy --listen HOST:PORTA
+                               [--stop-on-entry se sem BPs]
+                               --wait-for-client script.py
+           → ClienteDAP._handshake()
+                → initialize → aguarda response
+                → attach     → aguarda initialized event
+                → setBreakpoints(linhas)
+                → configurationDone
+           → ClienteDAP._loop_mensagens()
+                → eventos: stopped / continued / exited / terminated
+                → a cada stopped: stackTrace → scopes → variables
+
+  Breakpoints:
+    NumeroLinhas emite breakpoint_clicado(int)
+      → main_window._ao_breakpoint_clicado(linha)
+           → guard: arquivo do editor == arquivo da sessão ativa
+           → PainelDebug.sincronizar_breakpoints(bps)
+                → ClienteDAP.set_breakpoints(linhas) [thread-safe via Lock]
+
+    Troca de aba no editor:
+      main_window._ao_trocar_aba_breakpoint()
+        → desconecta sinal do NumeroLinhas anterior
+        → reconecta ao NumeroLinhas da aba agora ativa
+
+  Encerramento:
+    TerminalTabWidget.fechar_aba()
+      → detecta PainelDebug → chama _parar_sessao_atual()
+           → desconecta finished para evitar dupla execução
+           → ClienteDAP.parar() [seta _parar=True]
+           → ClienteDAP.wait(8000)
+           → ClienteDAP.deleteLater() após QThread.finished
+    Evita: 'QThread: Destroyed while thread is still running'
+
+
+DECISÕES TÉCNICAS
+─────────────────
+
+  Modo --listen (não --connect):
+    debugpy --listen HOST:PORTA --wait-for-client script.py
+    O attach DAP vai na direção IDE → debugpy (não o contrário).
+    Consequência: stopOnEntry no corpo do attach é IGNORADO pelo
+    debugpy em modo --listen. Usar --stop-on-entry na CLI quando
+    não há breakpoints.
+
+  Handshake em duas etapas (BUG corrigido Sessão 11):
+    ERRADO: initialize → espera (response + initialized event) → attach
+    CORRETO: initialize → espera response → attach → espera initialized event
+    O debugpy só emite initialized event APÓS receber attach.
+
+  Encerramento sem deadlock (BUG corrigido Sessão 11):
+    stderr.read() bloqueia enquanto processo está vivo.
+    Ordem correta: terminate() → wait(2s) → kill() → drenar stderr → fechar socket.
+
+  Porta TCP dinâmica:
+    socket.bind("", 0) — SO escolhe porta efêmera livre.
+    Evita conflitos entre sessões simultâneas.
+
+  Thread-safety:
+    _seq_lock (threading.Lock) protege _seq + socket.sendall().
+    Signals Qt entregam notificações na UI thread.
+
+  Filtro de variáveis:
+    Nomes com prefixo __ ou @py_ são excluídos da exibição.
+    São internos do Python/debugpy — não interessam ao usuário.
+
+
+SINAIS / API PÚBLICA
+─────────────────────
+
+  ClienteDAP (QThread):
+    [Signal] parado(int)          — linha onde execução pausou
+    [Signal] continuando()        — execução retomou
+    [Signal] encerrado()          — processo debugpy terminou
+    [Signal] variaveis(list)      — lista de dicts {nome, tipo, valor}
+    [Signal] erro(str)            — mensagem de erro da sessão DAP
+
+    [Método] set_breakpoints(linhas: list[int])
+             Envia setBreakpoints ao debugpy. Thread-safe via Lock.
+             Chamado de: PainelDebug.sincronizar_breakpoints()
+
+    [Método] parar()
+             Seta _parar=True — loop encerra na próxima iteração.
+             Chamado de: PainelDebug._parar_sessao_atual()
+
+  PainelDebug (QWidget):
+    [Método] iniciar_sessao(arquivo: str, python_path: str, breakpoints: list)
+             Cria e inicia ClienteDAP. Chamado de: main_window._iniciar_debug()
+
+    [Método] sincronizar_breakpoints(breakpoints: list[int])
+             Repassa BPs ao ClienteDAP ativo via set_breakpoints().
+             Chamado de: main_window._ao_breakpoint_clicado()
+
+    [Método] _parar_sessao_atual()
+             Encerramento seguro: desconecta finished, parar(), wait(8s),
+             deleteLater(). Chamado de: TerminalTabWidget.fechar_aba()
+
+
+INTEGRAÇÕES
+───────────
+
+  _APP_/terminal_tab_widget.py
+    abrir_aba_debug(arquivo)    — cria/reutiliza aba com PainelDebug
+    fechar_aba()                — chama _parar_sessao_atual() se PainelDebug
+    painel_debug_ativo()        — retorna PainelDebug ativo ou None
+    debug_solicitado = Signal() — botão 🐛 emite para main_window conectar
+
+  _APP_/main_window.py
+    _iniciar_debug()            — coleta BPs + chama abrir_aba_debug
+    _ao_breakpoint_clicado()    — sincroniza BPs com guard de arquivo
+    _ao_trocar_aba_breakpoint() — reconecta sinal ao NumeroLinhas ativo
+    _pegar_python_projeto()     — retorna python da .venv do usuário
+
+  _EDITOR_/Core/NumeroLinhas
+    breakpoint_clicado = Signal(int) — emitido ao clicar na margem
+
+  debugpy (venv do usuário)
+    ❌ Nunca instalar na venv da IDE — apenas na venv do usuário
+
+
+REGRAS DO SUB-MÓDULO
+─────────────────────
+
+  R1  debugpy SEMPRE na venv do projeto do usuário — nunca na venv da IDE.
+      _pegar_python_projeto() retorna '' se .venv não existe — mostrar aviso.
+
+  R2  _encerrar(): terminate/kill ANTES de drenar stderr — nunca o contrário.
+
+  R3  Guard de arquivo em _ao_breakpoint_clicado() é obrigatório:
+      se arquivo do editor != arquivo da sessão → descartar silenciosamente.
+
+  R4  ClienteDAP deve ser deletado via deleteLater() APÓS QThread.finished —
+      nunca antes. Conectar _ao_thread_finalizada ao finished do QThread.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fim do documento
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

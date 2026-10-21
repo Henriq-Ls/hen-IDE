@@ -1,0 +1,295 @@
+# 📁 _CONFIGURA_/_DOC_CONFIGURA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hen IDE — Módulo _CONFIGURA_
+Última atualização: 2026-06-29 (auditoria completa — 4 gerenciadores adicionados)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+Centralizar toda a configuração da IDE hen: constantes globais,
+tema visual, atalhos de teclado, fontes e snippets de autocomplete.
+Nenhum módulo usa strings ou números soltos — tudo vem daqui.
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES
+─────────────────────────────────────────────────────────────────
+
+- Fornecer constantes globais (cores, fontes, tamanhos, caminhos)
+- Carregar e distribuir tema visual (thema.json) para todos os componentes
+- Registrar QShortcuts a partir de atalhos.json na MainWindow
+- Aplicar fontes e layout (configurar.json) em todos os painéis
+- Hot-reload de todas as configurações sem reiniciar a IDE
+- Prover sistema de log centralizado (log.py)
+- Exibir painéis visuais personalizados ao abrir cada JSON no editor
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS
+─────────────────────────────────────────────────────────────────
+
+Python — gerenciadores:
+  __init__.py               constantes globais (cores, fontes,
+                            tamanhos, caminhos, paleta ANSI)
+  gerenciador_tema.py       carrega thema.json, singleton tema_global()
+  gerenciador_atalhos.py    carrega atalhos.json, registra QShortcuts
+  gerenciador_configurar.py carrega configurar.json, aplica fontes
+  gerenciador_nucleo.py     lê nucleo.json, acessa seções por chave
+  gerenciador_perfil.py     dono exclusivo de perfil.json (arquivo próprio,
+                            fora de configurar.json — ver _DOC_PERFIL.txt):
+                            obter_perfil(), obter_nome_usuario(), salvar_perfil(),
+                            salvar_caminho_projetos(). Lido por utilitarios_perfil.py
+                            e painel_boas_vindas.py para gerar saudações.
+  gerenciador_templates.py  salva/carrega templates de arquivos padrão para
+                            novos projetos (PASTA_APPDATA/templates_projeto.json).
+                            Formato: { nome, ext, conteudo } por template.
+  gerenciador_tarefas.py    GerenciadorTarefas singleton — carrega tarefas.json
+                            (global + projeto ativo), registra QShortcuts F2–F10,
+                            executa comandos via PowerShell. Expande variáveis
+                            $PROJETO / $ARQUIVO / $VENV / $SCRIPTS.
+  gerenciador_autocomplete.py gerencia autocomplete.json: carrega dados, mantém
+                            snippets em memória, notifica editores via hot-reload.
+                            Singleton autocomplete_global(); registrar(widget) /
+                            desregistrar(widget) no ciclo de vida do editor.
+  fontes.py                 carrega fontes .ttf de Fontes_hen/
+
+Nota: gerenciador_nucleo.py é apenas o leitor de nucleo.json para o
+Núcleo (_NUCLEO_/). Não é o gerenciador_configurar.py.
+
+Python — explorers visuais (em _TERMINAIS_/):
+  thema_explorer.py        painel visual de thema.json           [Sessão 10]
+                           (swatches de cor + QColorDialog por entrada)
+                           Rota: Ctrl+3 → foco no arquivo → aba no terminal
+
+  atalho_explorer.py       painel visual de atalhos.json
+                           (grupos coloridos por contexto, edição de teclas)
+                           Rota: Ctrl+4 → foco no arquivo → aba no terminal
+
+  configurar_explorer.py   painel visual de configurar.json
+                           (fonte+tamanho por seção, gutter, perfil, cursor)
+                           Rota: Ctrl+5 → foco no arquivo → aba no terminal
+
+  autocomplete_explorer.py painel visual de autocomplete.json
+                           (campos de ambiente + linhas de snippet add/remove)
+                           Rota: Ctrl+6 → foco no arquivo → aba no terminal
+
+  nucleo_explorer.py       painel visual de nucleo.json
+                           (7 seções: formatador, diagnóstico, índice,
+                            ambiente, ia, documentador, exportar)
+                           Rota: Ctrl+7 → foco no arquivo → aba no terminal
+
+Roteamento dos explorers visuais (main_window.py):
+  _ao_trocar_aba_editor_json() detecta qual JSON foi ativado e
+  abre o explorer correspondente em nova aba no terminal_tabs.
+  Atalho Ctrl+N abre o arquivo JSON cru no editor (para edição manual).
+  Qualquer .json sem explorer dedicado usa o JsonExplorer genérico.
+
+JSON editáveis pelo usuário:
+  thema.json                cores de toda a interface   (Ctrl+3)
+  atalhos.json              atalhos de teclado          (Ctrl+4)
+  configurar.json           fonte, tamanho, layout      (Ctrl+5)
+  autocomplete.json         snippets e pasta da venv    (Ctrl+6)
+  nucleo.json               núcleo, formatador, IA      (Ctrl+7)
+
+Todos os JSONs suportam comentários // — a função _ler_json() do
+__init__.py strip comentários antes de parsear.
+
+─────────────────────────────────────────────────────────────────
+# ATALHOS — Sequência Ctrl+1 a Ctrl+7
+─────────────────────────────────────────────────────────────────
+
+  Ctrl+1  → Tarefas do Projeto   (abre .hen/tarefas.json do projeto ativo)
+  Ctrl+2  → Tarefas Globais      (abre AppData/Roaming/hen/tarefas.json)
+  Ctrl+3  → Tema                 (abre thema.json → ThemaExplorer)
+  Ctrl+4  → Atalhos              (abre atalhos.json → AtalhoExplorer)
+  Ctrl+5  → Configurações        (abre configurar.json → ConfigurarExplorer)
+  Ctrl+6  → Autocomplete         (abre autocomplete.json → AutocompleteExplorer)
+  Ctrl+7  → Núcleo               (abre nucleo.json → NucleoExplorer)
+
+  Constantes correspondentes em __init__.py:
+    ATALHO_TAREFAS_PROJETO  = "Ctrl+1"
+    ATALHO_TAREFAS_GLOBAIS  = "Ctrl+2"
+    ATALHO_EDITAR_TEMA      = "Ctrl+3"
+    ATALHO_EDITAR_ATALHOS   = "Ctrl+4"
+    ATALHO_EDITOR_CONFIG    = "Ctrl+5"
+    ATALHO_AUTOCOMPLETE     = "Ctrl+6"
+    ATALHO_NUCLEO           = "Ctrl+7"
+
+─────────────────────────────────────────────────────────────────
+# FLUXO INTERNO
+─────────────────────────────────────────────────────────────────
+
+Inicialização:
+  1. __init__.py — constantes carregadas em memória (sem I/O)
+  2. fontes.py   — fontes .ttf registradas no Qt
+  3. gerenciador_tema.py      — lê thema.json → distribui cores
+  4. gerenciador_atalhos.py   — lê atalhos.json → registra QShortcuts
+  5. gerenciador_configurar.py — lê configurar.json → aplica fontes
+
+Hot-reload (sem reiniciar):
+  - QFileSystemWatcher monitora thema.json e configurar.json
+  - Ao salvar, o gerenciador detecta a mudança e propaga
+    atualizar_tema() / aplicar_fontes() para os componentes registrados
+
+Explorer visual (quando arquivo JSON é aberto no editor):
+  - _ao_trocar_aba_editor_json() em main_window.py detecta o arquivo
+  - Instancia o Explorer correspondente (ThemaExplorer, ConfigurarExplorer etc.)
+  - Abre em nova aba do terminal_tabs com o nome do arquivo
+  - Se aba já existia: reutiliza + _recarregar_se_necessario()
+  - Salvar dentro do Explorer → json.dump → hot-reload detecta e aplica
+
+Acesso ao tema em qualquer módulo:
+  t = tema_global()
+  cor = t.cor("editor.fundo", "#0d0d0d")  # chave pontilhada + fallback
+
+─────────────────────────────────────────────────────────────────
+# SINAIS / API PÚBLICA
+─────────────────────────────────────────────────────────────────
+
+  gerenciador_tema: sem sinais Qt externos.
+  Hot-reload é transparente via QFileSystemWatcher interno.
+
+  API PÚBLICA (importada em todos os módulos da IDE):
+    tema_global()         → Tema   — acesso centralizado ao thema.json
+    config_global()       → dict   — acesso ao configurar.json
+    atalhos_global()      → dict   — acesso ao atalhos.json
+    autocomplete_global() → dict   — acesso ao autocomplete.json
+    nucleo_global()       → dict   — acesso ao nucleo.json
+
+  Tema.cor(chave: str, fallback: str) → str
+    Lê cor pelo caminho pontilhado (ex: "editor.fundo").
+    Fallback aplicado se a chave não existir.
+
+
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+Consumidores de __init__.py:
+  Todos os módulos da IDE (importação direta)
+
+Consumidores de gerenciador_tema:
+  editor, outline, painel_arquivos, painel_ia, painel_git,
+  terminal PowerShell, terminal Run, todos os Explorers visuais
+
+Consumidores de gerenciador_atalhos:
+  MainWindow
+
+Consumidores de gerenciador_configurar:
+  editor, terminal, outline, painel_arquivos, painel_ia, painel_git
+
+Consumidores de gerenciador_nucleo:
+  _NUCLEO_/ (indexador, diagnóstico, documentador, exportar)
+
+Explorers visuais:
+  main_window._ao_trocar_aba_editor_json() → instancia e exibe no terminal_tabs
+
+Dependências externas:
+  PySide6 — QShortcut, QFileSystemWatcher, QFont, QFontDatabase,
+             QColorDialog (usado pelo ThemaExplorer)
+  Sem dependência de outros módulos internos da hen
+
+─────────────────────────────────────────────────────────────────
+# MAPEAMENTO DE SEÇÕES — configurar.json
+─────────────────────────────────────────────────────────────────
+
+  Chave JSON         O que controla                   Atributo na janela
+  ─────────────────  ───────────────────────────────  ──────────────────
+  "ui"               menus, abas, labels, barra       QApplication + findChildren
+  "editor"           editor de código                 janela.tabs.editores
+  "terminal"         terminal interativo              janela.terminal_tabs.terminais
+  "outline"          painel de outline                editor._outline._arvore
+  "painel_arquivos"  FileTree (árvore de arquivos)    janela.painel_arquivos._tree
+  "painel_ia"        painel de IA                     janela.painel_ia (findChildren)
+  "git"              painel esquerdo inferior         janela.painel_git (findChildren)
+                     (Git + Projeto + Logs)
+  "gutter"           larguras da calha de números     AreaNumerosLinha + ReguaErros
+                     (largura_guiter, largura_pad_esq,   lidas em _recarregar_gutter()
+                      largura_seta, largura_git,         e _largura_erro_config()
+                      largura_pad_dir, largura_erro,     ao iniciar os widgets
+                      numeros_colunas)
+  "perfil"           dados do usuário (exibição)      labels na UI
+
+  ⚠️  Não renomear as chaves — gerenciador_configurar.py usa os
+      mesmos nomes para fazer self.obter("chave", ...).
+
+  Chaves especiais em "ui":
+    "tamanho_fonte_aba" — tamanho da fonte das abas de código (AbaWidget).
+                          Se omitida, calculado como altura_aba * 0.37.
+
+─────────────────────────────────────────────────────────────────
+# MAPEAMENTO DE SEÇÕES — thema.json
+─────────────────────────────────────────────────────────────────
+
+  Chave JSON         O que controla                    Nº de cores
+  ─────────────────  ─────────────────────────────     ──────────
+  "interface"        UI geral: fundos, textos, bordas,  27 chaves
+                     botões, scrollbar, ícones
+  "editor"           editor de código: fundo, seleção,  21 chaves
+                     números de linha, busca, git diff  + sub "sintaxe" (24)
+  "terminal"         terminal interativo: fundo, texto    5 chaves
+                                                         + sub "cores_ansi" (16)
+  "terminal_run"     saída do código: erros, sucesso,    9 chaves
+                     avisos, separadores
+  "painel_arquivos"  árvore de arquivos: hover, seleção, 13 chaves
+                     ícones por tipo
+  "painel_outline"   outline: classes, funções, métodos, 20 chaves
+                     filtro, cores por tipo de símbolo
+  "painel_git"       git: ramos, diffs, botões commit,  24 chaves
+                     inputs de mensagem
+  "painel_ia"        chat da IA: bolhas, código,        18 chaves
+                     botão enviar, cor do hen
+  "log"              mensagens do log interno:           4 chaves
+                     ok / info / aviso / erro
+  "grafo"            visualizador de grafo AST:          4 chaves
+                     nó, borda, texto, seta
+  "menu_contexto"     ícones da barra lateral:            6 chaves
+                     hover, selecionado, texto
+  "menu_contexto"    menu de clique direito:             5 chaves
+                     fundo, texto, hover
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+- Strings de fonte, cor e tamanho nunca hardcoded nos módulos —
+  sempre importar de _CONFIGURA_/__init__.py
+- Toda constante de fonte tem fallback definido por painel
+- Ctrl+1 a Ctrl+7 usam ApplicationShortcut (foco em widget filho)
+- Ctrl+Z não registra QShortcut implícito no menu — só texto
+  decorativo (previne bug do duplo-undo)
+- ATALHOS_NAO_REGISTRAR = {"ctrl-click", "tab", "shift-tab"}
+- Chaves JSON com prefixo _ são ignoradas (uso documental)
+- Fallback de cor: se thema.json não tem a chave, usa constante
+  de __init__.py
+- Explorer visual salva via json.dump — comentários são removidos
+  ao salvar; o arquivo original tem comentários mas o salvo não.
+  Isso é esperado: os labels do Explorer substituem os comentários.
+- Fonte aplicada sempre via stylesheet (pt, nunca px):
+    widget.setStyleSheet(ss + f"font-family:'{n}'; font-size:{t}pt;")
+  Motivo: stylesheet do pai sobrescreve setFont() — só stylesheet
+  do PRÓPRIO widget garante a aplicação correta.
+- Constantes da seção "gutter" são lidas em tempo de execução
+  pelos widgets (AreaNumerosLinha._recarregar_gutter() e
+  ReguaErros._largura_erro_config()); as constantes em __init__.py
+  continuam como fallback — nunca são a fonte primária em runtime.
+- ThemaExplorer usa QColorDialog.ShowAlphaChannel; armazena HexArgb
+  (#aarrggbb) quando alpha < 255, hex padrão (#rrggbb) quando opaco.
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+Fontes customizadas:
+  Diretório: _CONFIGURA_/Fontes_hen/
+  Para confirmar nomes internos registrados pelo Qt:
+    from _CONFIGURA_.fontes import carregar_fontes
+    print(carregar_fontes())
+
+Temas Qt:
+  Fusion e Windows são nativos, sem instalação.
+  Os demais (QDarkStyle, QtMaterial etc.) exigem pip install.
+  Tema ativo: TEMA_QT_PADRAO = "Fusion"
+
+Explorer vs JSON cru:
+  O Explorer visual é mostrado por padrão quando o JSON é aberto.
+  Para editar o JSON diretamente (com comentários preservados),
+  o usuário abre o arquivo com Ctrl+O ou pelo FileTree como qualquer
+  outro arquivo — sem usar os atalhos Ctrl+3..7.

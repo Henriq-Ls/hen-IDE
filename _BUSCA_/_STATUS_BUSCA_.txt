@@ -1,0 +1,68 @@
+# 📁 _BUSCA_/_STATUS_BUSCA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  _BUSCA_ — STATUS DO MÓDULO
+  Última atualização: 2026-07-16 (Sessão 27: sistema de marcação)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+IMPLEMENTADO  ✅
+────────────────
+• MotorBusca — dispatcher completo com todos os prefixos funcionando
+• TipoBusca (Enum) e ResultadoBusca (dataclass) — modelo de dados estável
+• busca_arquivos.py — busca fuzzy por nome de arquivo no projeto
+• busca_recentes.py — exibe arquivos recentes quando busca está vazia
+• busca_linha.py — navegação ":N" para linha do arquivo atual
+• busca_comandos.py — command palette com 16 comandos mapeados
+• busca_anotacoes.py — coleta marcações (#TODO / #LEMBRAR / #CONSERTAR / #FAZER /
+  #GAMBIARRA) com filtro por tag e texto; AnotacoesThread streaming;
+  _parsear_filtro() unifica lógica de extração do filtro
+• busca_grep.py — GrepThread (QThread) com streaming de resultados + limite 50
+• busca_simbolos.py — implementada com ast.parse; extrai FunctionDef + ClassDef
+  do arquivo atual e retorna lista[ResultadoBusca] com linha e nome do símbolo
+• Cancelamento limpo de GrepThread ao iniciar nova busca
+• Integração com BarraCentral em _APP_; resultados roteados para PainelOutline
+  (modo BUSCA) via cb_resultados=outline.mostrar_busca_motor e
+  cb_grep=outline.adicionar_grep_motor — PainelResultados bypassed
+
+
+EM DESENVOLVIMENTO  ⏳
+───────────────────────
+• (nenhum item em desenvolvimento ativo no momento)
+
+
+PENDENTE / PRÓXIMA ORDEM  🔲
+──────────────────────────────
+1. Definir prefixo oficial para busca_simbolos.py no MotorBusca dispatcher
+   (hoje sem prefixo oficial — "@" está ocupado pelo grep; sugestão: "$")
+2. Mover buscar_anotacoes() para QThread quando o projeto crescer
+3. Expor limite do grep como configuração em _CONFIGURA_/__init__.py
+   (hoje hardcoded em 50)
+4. Busca semântica via ChromaDB (baixa prioridade)
+5. Suporte a JS/TS no grep quando tree-sitter for adicionado
+
+
+PROBLEMAS CONHECIDOS  ⚠️
+──────────────────────────
+• busca_anotacoes() é síncrona — em projetos muito grandes pode travar a UI por breves
+  instantes; candidata a virar QThread futuramente
+• Prefixo "#" sem "marcação" (ex: "#qualquercoisa") cai no fluxo de
+  texto livre em vez de retornar aviso — comportamento silencioso, não é bug crítico
+• Cores do NavegadorAbas (popup Ctrl+Tab) estão hardcoded (#1a1a2e, #4a90d9) —
+  não respeita tema dinâmico
+
+--- 2026-06-19 Sessão 6 ---
+✅ barra_buscas.py, busca_substituicao.py, find_in_files.py, find_references.py:
+   todos tematizados — hex → tema_global().cor() com fallback de constante
+
+--- 2026-06-29 ---
+✅ busca_simbolos.py corrigida no doc: está implementada (ast.parse FunctionDef+ClassDef)
+   Removida de PENDENTE, adicionada a IMPLEMENTADO
+
+--- 2026-07-16 Sessão 27: Sistema de marcação ---
+✅ busca_anotacoes.py reescrito: tags antigas (todo/lembrar/fixme) substituídas pelas
+   5 novas (TODO, LEMBRAR, CONSERTAR, FAZER, GAMBIARRA); novo _parsear_filtro();
+   AnotacoesThread corrigida — filtros calculados antes do loop (era recalculado a cada linha);
+   isInterruptionRequested() para cancelamento cooperativo
+✅ motor_busca.py: gatilho de anotações trocado de "todo|lembrar|fixme" para
+   "marcação" (ou "marcacao") — zero mudança na API externa

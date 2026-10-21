@@ -1,0 +1,677 @@
+Você é um engenheiro sênior especialista em Python, PySide6 e IDEs desktop.
+Este projeto é 100% desktop — nunca sugira soluções web ou mobile.
+
+PROJETO: hein IDE — Depurador Integrado (DAP/debugpy)
+
+MODO DE TRABALHO:
+1. Não implemente nada sem instrução explícita.
+2. Quando eu descrever um comportamento ou problema, você:
+   a. Lê imediatamente o código relevante para confirmar o que está acontecendo.
+   b. Confirma em 2-3 linhas o que encontrou no código (causa raiz, arquivo, linha).
+   c. Já adiciona o item documentado no arquivo .txt indicado — o arquivo cresce
+      a cada problema novo, eu acompanho em tempo real.
+3. Ao final do debate, revisamos o documento juntos.
+4. Monta a fila de implementação numerada (IMP-01, IMP-02...) e aguarda autorização.
+5. Quando eu autorizar, implementa um item por vez e avisa o que fazer pra testar.
+
+FORMATO DE DOCUMENTAÇÃO DE CADA ITEM:
+## X.Y Título curto
+
+ARQUIVO: caminho/do/arquivo.py
+
+COMPORTAMENTO ESPERADO:
+  (o que deveria acontecer)
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  (o que acontece hoje)
+
+CAUSA RAIZ:
+  (onde e por quê — com arquivo:linha quando possível)
+
+ONDE IMPLEMENTAR:
+  (arquivo + método + ação cirúrgica)
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# IMPLEMENTAÇÕES — FILA DE TRABALHO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Legenda: [ ] pendente   [✓] feito   [~] em andamento
+
+─── BUGS ─────────────────────────────────────────────────────────────────────
+
+  [✓] IMP-01  Handshake DAP travava 64 s (deadlock initialize/attach)
+  [✓] IMP-02  stopOnEntry ignorado pelo debugpy em modo --listen
+  [✓] IMP-03  _encerrar() bloqueava indefinidamente (stderr.read antes de kill)
+  [✓] IMP-04  Sincronização de BPs enviava arquivo errado ao depurador
+  [✓] IMP-05  estado_editor.py criava subdiretórios no Windows (regex de path)
+
+─── FEATURES ─────────────────────────────────────────────────────────────────
+
+  [✓] IMP-06  Subprocess + conexão TCP ao debugpy
+  [✓] IMP-07  Handshake DAP completo (initialize → attach → setBreakpoints → configurationDone)
+  [✓] IMP-08  Injeção de debugpy da IDE via PYTHONPATH (sem exigir pip install no projeto)
+  [✓] IMP-09  Loop de eventos DAP (stopped / continued / exited / terminated)
+  [✓] IMP-10  stackTrace → scopes → variables após cada pausa
+  [✓] IMP-11  Filtro de variáveis internas (__xxx, @py_xxx)
+  [✓] IMP-12  PainelDebug — UI com estados visuais e QTreeWidget de variáveis
+  [✓] IMP-13  Controles de fluxo: Continuar / Próxima Linha / Entrar / Sair / Parar
+  [✓] IMP-14  Breakpoints visuais na calha (bolinha vermelha + ghost hover)
+  [✓] IMP-15  API get_breakpoints() / set_breakpoints() no AreaNumerosLinha
+  [✓] IMP-16  Coleta de BPs ao iniciar sessão (_iniciar_debug)
+  [✓] IMP-17  Sincronização em tempo real: clique na margem → DAP setBreakpoints
+  [✓] IMP-18  Guard de arquivo: descarta sync quando editor ≠ arquivo da sessão
+  [✓] IMP-19  Reconexão do sinal BP ao trocar de aba (_ao_trocar_aba_breakpoint)
+  [✓] IMP-20  Encerramento seguro: _parar_sessao_atual() + fechar_aba() + deleteLater()
+  [✓] IMP-21  Persistência de BPs em disco (EstadoEditor — JSON por arquivo)
+  [ ] IMP-22  Saída (stdout) do script depurado exibida em aba Run separada
+
+REGRAS GERAIS:
+- Mostre ANTES e DEPOIS ao entregar código — nunca o arquivo inteiro.
+- Menor alteração possível — nunca toque no que funciona.
+- Todo processamento pesado em QThread — nunca na UI thread.
+- NUNCA confunda as duas venvs:
+    venv da IDE      → D:\_PROJETOS\Editor_Terminal\.venv\
+    venv do usuário  → <projeto>\.venv\
+- debugpy deve vir da venv da IDE (via PYTHONPATH) — não exigir pip no projeto.
+- Em caso de dúvida: pergunte antes de alterar.
+- Sem bibliotecas externas desnecessárias — PySide6 + stdlib Python.
+
+Confirme que entendeu e aguarde minha primeira instrução.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 1 — INFRAESTRUTURA: PROCESSO + TCP + HANDSHAKE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.1 Subprocess debugpy com porta efêmera
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Ao iniciar a sessão, a IDE lança o script do usuário via debugpy em modo
+  --listen com uma porta TCP livre escolhida pelo sistema operacional.
+  Não deve haver conflito de porta entre sessões paralelas.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  ClienteDAP.__init__: porta=0 → _porta_livre() via socket.bind("", 0).
+  ClienteDAP._iniciar_processo(): monta comando e lança subprocess.Popen.
+  Flags Windows: CREATE_NO_WINDOW evita janela de console visível no .exe.
+  stdout=DEVNULL evita bloqueio de buffer; stderr=PIPE apenas para diagnóstico.
+  cwd = diretório do script (imports relativos funcionam corretamente).
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.2 Injeção do debugpy da IDE via PYTHONPATH
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  O usuário não precisa ter debugpy instalado no .venv do projeto.
+  A IDE usa o debugpy da sua própria venv e o injeta no processo filho
+  via variável de ambiente PYTHONPATH — igual ao comportamento do VS Code.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._site_packages_debugpy(): importa debugpy no contexto da IDE,
+  sobe um nível de __file__ e retorna o site-packages.
+  ClienteDAP._iniciar_processo(): prefixo no PYTHONPATH herdado do processo pai.
+  Fallback silencioso: se debugpy não encontrado, PYTHONPATH não é alterado.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.3 Conexão TCP com detecção de morte prematura
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Após lançar o processo, a IDE tenta conectar via TCP por até 15 s.
+  Se o subprocess morrer antes de aceitar conexão, a IDE detecta imediatamente
+  (sem aguardar os 15 s completos) e exibe o stderr como mensagem de erro.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._conectar_socket(): loop com time.sleep(0.35); a cada iteração
+  verifica self._proc.poll() — se não None, lê stderr via _ler_stderr_proc()
+  e lança RuntimeError imediato com o código de saída e o texto do erro.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.4 Handshake DAP — ordem correta para debugpy --listen
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Handshake completo sem deadlock, em ordem:
+    1. initialize   → aguarda apenas o response (não o evento ainda)
+    2. attach       → enviado imediatamente após o response
+    3. aguarda initialized event (só emitido pelo debugpy após receber attach)
+    4. setBreakpoints
+    5. configurationDone → debugpy inicia o script
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO — BUG IMP-01 corrigido.
+  Antes da correção: o código aguardava AMBOS (response + initialized event)
+  antes de enviar attach. O debugpy só emite o initialized event após receber
+  o attach → deadlock de 64 s até timeout.
+
+CAUSA RAIZ:
+  cliente_dap.py · ClienteDAP._handshake():
+  A versão original usava um único loop aguardando os dois sinais ao mesmo tempo
+  antes de enviar attach. O debugpy em modo --listen não emite initialized event
+  até receber attach — deadlock garantido com a ordem errada.
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._handshake(): dois loops separados — o primeiro aguarda só o response
+  do initialize; attach é enviado; o segundo aguarda o initialized event.
+  Comentário ⚠️ no código alerta futuros devs sobre a ordem correta.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 1.5 stopOnEntry — CLI vs parâmetro DAP
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Quando não há breakpoints definidos, o depurador deve pausar na linha 1
+  automaticamente. Quando há BPs, o script deve rodar direto até atingi-los.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO — BUG IMP-02 corrigido.
+  Antes da correção: stopOnEntry era passado no corpo do attach DAP.
+  O debugpy em modo --listen ignora esse campo silenciosamente.
+  Resultado: sem BPs → script executava e encerrava sem pausar; com BPs →
+  pausava na linha 1 em vez de parar nas linhas marcadas.
+
+CAUSA RAIZ:
+  O campo "stopOnEntry" no corpo do attach DAP é documentado para o modo
+  launch — em modo --listen (attach), o debugpy ignora esse campo.
+  A pausa na linha 1 deve ser controlada pela flag --stop-on-entry na linha
+  de comando do subprocess, não via protocolo DAP.
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._iniciar_processo(): se len(self._bps) == 0, adiciona
+  "--stop-on-entry" nos argumentos do subprocess.
+  ClienteDAP._handshake(): attach envia "stopOnEntry": len(self._bps) == 0
+  (mantido por compatibilidade, mas o efeito real vem do CLI).
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 2 — LOOP DE EVENTOS E CONTROLE DE FLUXO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.1 Loop de eventos DAP
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Após o handshake, a thread mantém um loop contínuo recebendo eventos DAP.
+  Eventos "stopped" disparam busca de posição + variáveis.
+  Eventos "continued" atualizam o estado para executando.
+  Eventos "exited" / "terminated" encerram o loop limpo.
+  Loop pode ser interrompido a qualquer momento via self._parar.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._loop_mensagens(): despacha para _tratar_evento() e _tratar_resposta().
+  ClienteDAP._ler_mensagem(): recv com timeout de 1 s (TIMEOUT_RECV) — permite
+  verificar self._parar sem bloquear indefinidamente.
+  Buffer TCP acumulado em self._buf; _extrair_do_buffer() monta mensagens DAP
+  completas (header Content-Length + corpo JSON).
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.2 stackTrace → scopes → variables após pausa
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Ao receber evento "stopped", a IDE automaticamente busca:
+    stackTrace → frame atual (arquivo + linha)
+    scopes     → referência do escopo local
+    variables  → lista de variáveis do escopo
+  Emite pausado(arquivo, linha) e variaveis_recebidas(lista).
+  Variáveis internas (__xxx, @py_xxx) são filtradas.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  _tratar_evento("stopped"): chama _buscar_localizacao() → envia stackTrace.
+  _tratar_resposta("stackTrace"): extrai frame[0], emite pausado(); chama _buscar_variaveis().
+  _tratar_resposta("scopes"): extrai variablesReference do 1º escopo; envia variables.
+  _tratar_resposta("variables"): filtra e emite variaveis_recebidas(list[dict]).
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.3 Controles de fluxo: Continuar / Próxima Linha / Entrar / Sair / Parar
+
+ARQUIVO: _TERMINAIS_/Debug/painel_debug.py
+
+COMPORTAMENTO ESPERADO:
+  Botões no PainelDebug enviam comandos DAP ao ClienteDAP.
+  Habilitados apenas quando estado == "pausado" (exceto Parar).
+  Parar encerra a sessão, libera a thread e atualiza a UI para "parado".
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  PainelDebug._cmd_continuar/proximo/entrar/sair(): emite sinal público +
+  chama self._dap.<método>() se a sessão estiver ativa.
+  PainelDebug._cmd_parar(): chama _parar_sessao_atual() + set_estado("parado") + limpar().
+  PainelDebug.set_estado(): habilita/desabilita botões conforme o estado.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 2.4 Encerramento seguro — sem "QThread: Destroyed while thread is still running"
+
+ARQUIVO: _TERMINAIS_/Debug/painel_debug.py · _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Ao fechar a aba ou clicar Parar:
+    1. parar() é chamado no ClienteDAP (flag _parar + disconnect DAP).
+    2. _encerrar() fecha o socket, termina o processo (terminate → kill) e drena
+       stderr — na ordem correta (término do processo ANTES de drenar).
+    3. wait(8000) aguarda a QThread terminar antes de chamar deleteLater().
+    4. QThread.finished → _ao_thread_finalizada() → deleteLater() (caminho normal).
+  Nunca ocorre "QThread: Destroyed while thread is still running".
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO — BUG IMP-03 corrigido.
+  Antes: stderr.read() era chamado antes de terminate()/kill(). Como o pipe
+  permanece aberto enquanto o processo está vivo, o read() bloqueava
+  indefinidamente → IDE congelava ao clicar Parar.
+
+CAUSA RAIZ:
+  cliente_dap.py · ClienteDAP._encerrar():
+  A ordem original era: fechar socket → ler stderr → terminate/kill.
+  A leitura de um PIPE aberto de um processo vivo bloqueia até o processo
+  fechar o descritor, o que não acontece se terminate() não foi chamado antes.
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._encerrar(): ordem correta:
+    1. Fecha socket (interrompe _ler_mensagem).
+    2. Drena stderr (proc.stderr.read() + close()) — só funciona após
+       o processo ter encerrado ou o pipe ter sido fechado.
+    Atenção: na implementação atual, o stderr é drenado ANTES de terminate()
+    mas o processo já pode estar morto neste ponto (exited/terminated event).
+    O terminate/kill só é chamado se proc.poll() is None.
+  painel_debug.py · _parar_sessao_atual(): wait(8000) antes de deleteLater().
+  terminal_tab_widget.py · fechar_aba(): detecta PainelDebug → _parar_sessao_atual().
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 3 — PAINEL DE CONTROLE (PainelDebug)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.1 Estados visuais do PainelDebug
+
+ARQUIVO: _TERMINAIS_/Debug/painel_debug.py
+
+COMPORTAMENTO ESPERADO:
+  O label de estado reflete o que o depurador está fazendo em tempo real:
+    aguardando → "Aguardando..."  cor #8b949e
+    pausado    → "⏸  Pausado"    cor #e6c547   (botões step habilitados)
+    executando → "▶  Executando" cor #4ec994   (botões step desabilitados)
+    parado     → "■  Parado"     cor #f87070
+    erro       → "✕  Erro"       cor #f87070   (mensagem de erro no lbl_local)
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  PainelDebug.set_estado(): dicionário _ESTADOS mapeia chave → (texto, cor).
+  Habilita Continuar/Próxima/Entrar/Sair apenas quando pausado.
+  Habilita Parar apenas quando pausado ou executando.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.2 QTreeWidget de variáveis com proteção contra profundidade infinita
+
+ARQUIVO: _TERMINAIS_/Debug/painel_debug.py
+
+COMPORTAMENTO ESPERADO:
+  Tabela Nome / Tipo / Valor exibida ao pausar.
+  Suporta variáveis com filhos (dicts, listas) de forma hierárquica.
+  Profundidade limitada a 10 níveis para proteger contra estruturas cíclicas.
+  Quando vazia, exibe mensagem de instrução ao usuário.
+  Atualiza a cada pausa; limpa ao continuar.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  PainelDebug.atualizar_variaveis(): _criar_item() recursivo com _prof <= _MAX_PROFUNDIDADE.
+  Alternância de linhas, ordenação por nome, coluna Valor com stretch.
+  _lbl_vazio ↔ _tabela alternam visibilidade.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 3.3 Aba Depurador reutilizada — sem duplicatas
+
+ARQUIVO: _APP_/terminal_tab_widget.py
+
+COMPORTAMENTO ESPERADO:
+  Clicar no botão 🐛 mais de uma vez não abre múltiplas abas "Depurador".
+  Se a aba já existe, apenas foca nela e atualiza o arquivo.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  TerminalTabWidget.abrir_aba_debug(): itera as abas procurando isinstance(w, PainelDebug).
+  Se encontrado: setCurrentIndex + set_arquivo + retorna o widget existente.
+  Se não encontrado: cria novo PainelDebug e adiciona aba.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 4 — BREAKPOINTS VISUAIS E INTEGRAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4.1 Breakpoints visuais na calha — bolinha vermelha
+
+ARQUIVO: _EDITOR_/Ui/numeros_linha.py
+
+COMPORTAMENTO ESPERADO:
+  Clicar na zona esquerda (largura larg_guiter) da calha alterna o breakpoint
+  naquela linha. Linha com BP: bolinha vermelha sólida (cor editor.erro do tema).
+  Hover sem BP: ghost semi-transparente (alpha 55) indicando que é clicável.
+  Linha com BP: número da linha exibido em vermelho (cor_bp) em vez do normal.
+  Emite Signal breakpoint_clicado(int) a cada toggle.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  AreaNumerosLinha.mousePressEvent(): zona x <= larg_guiter → toggle em self._breakpoints.
+  paintEvent(): if l1 in self._breakpoints → drawEllipse sólido; elif hover → ghost.
+  Número de linha: cor_bp se BP ativo na linha.
+  API pública: get_breakpoints() → set, set_breakpoints(bps) → restauro.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4.2 Coleta de breakpoints ao iniciar sessão
+
+ARQUIVO: _APP_/main_window.py
+
+COMPORTAMENTO ESPERADO:
+  Ao clicar 🐛, os breakpoints já marcados visualmente na calha são coletados
+  e passados ao PainelDebug antes de iniciar a sessão DAP.
+  O ClienteDAP recebe a lista de linhas e a inclui no setBreakpoints do handshake.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  MainWindow._iniciar_debug():
+    bps = editor.area_numeros.get_breakpoints()
+    painel.iniciar_sessao(arquivo=arquivo, python_path=python_path, breakpoints=bps)
+  PainelDebug.iniciar_sessao(breakpoints=None): sorted(breakpoints) → ClienteDAP(breakpoints=).
+  ClienteDAP.__init__(breakpoints): self._bps = sorted(breakpoints) if breakpoints else [].
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4.3 Sincronização em tempo real — clique na margem durante sessão ativa
+
+ARQUIVO: _APP_/main_window.py · _TERMINAIS_/Debug/painel_debug.py · _TERMINAIS_/Debug/cliente_dap.py
+
+COMPORTAMENTO ESPERADO:
+  Com sessão de depuração ativa, clicar na margem para add/remover um BP
+  envia imediatamente um DAP setBreakpoints ao debugpy com o estado atualizado.
+  O depurador respeita o novo conjunto de BPs sem reiniciar a sessão.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  main_window._ao_breakpoint_clicado(linha):
+    bps = editor.area_numeros.get_breakpoints()
+    painel_dbg.sincronizar_breakpoints(arquivo, bps)
+  PainelDebug.sincronizar_breakpoints(arquivo, bps):
+    if self._dap and self._dap.isRunning(): self._dap.set_breakpoints(sorted(bps))
+  ClienteDAP.set_breakpoints(linhas): self._bps = sorted(linhas); _enviar_set_breakpoints().
+  ClienteDAP._enviar_set_breakpoints(): DAP setBreakpoints com source.path + breakpoints[].
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4.4 Guard de arquivo — não sincroniza BPs do arquivo errado
+
+ARQUIVO: _APP_/main_window.py
+
+COMPORTAMENTO ESPERADO:
+  Se o usuário tiver outra aba aberta com arquivo diferente do arquivo
+  sendo depurado e clicar na margem dessa outra aba, o clique deve ser
+  descartado silenciosamente. O depurador não recebe BPs de arquivo errado.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO — BUG IMP-04 corrigido.
+  Antes: _ao_breakpoint_clicado() sincronizava sempre, sem verificar o arquivo.
+  Resultado: o depurador recebia linhas de um arquivo diferente, causando
+  comportamento indefinido no setBreakpoints.
+
+CAUSA RAIZ:
+  main_window.py · _ao_breakpoint_clicado():
+  O sinal breakpoint_clicado fica conectado ao editor ativo. Ao trocar de aba
+  para um arquivo diferente (sem reiniciar o depurador), cliques geravam
+  setBreakpoints com source.path errado.
+
+ONDE IMPLEMENTAR:
+  PainelDebug.sincronizar_breakpoints(arquivo, bps):
+    if arquivo != self._arquivo_atual: return
+  Descarta silenciosamente se arquivo ≠ arquivo da sessão.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 4.5 Reconexão do sinal BP ao trocar de aba
+
+ARQUIVO: _APP_/main_window.py
+
+COMPORTAMENTO ESPERADO:
+  Ao trocar de aba no editor, o sinal breakpoint_clicado é desconectado
+  da aba anterior e reconectado ao AreaNumerosLinha da nova aba.
+  Garante que cliques na margem sempre chegam ao handler correto,
+  independentemente de quantas abas estejam abertas.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  MainWindow.__init__: self.tabs.currentChanged.connect(self._ao_trocar_aba_breakpoint)
+  MainWindow._ao_trocar_aba_breakpoint(_=None):
+    desconecta editor_ant.area_numeros.breakpoint_clicado do handler anterior.
+    conecta editor.area_numeros.breakpoint_clicado → _ao_breakpoint_clicado.
+    armazena self._editor_bp_ativo = editor.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 5 — PERSISTÊNCIA DE ESTADO (EstadoEditor)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 5.1 Persistência de breakpoints em disco por arquivo
+
+ARQUIVO: _EDITOR_/Core/estado_editor.py
+
+COMPORTAMENTO ESPERADO:
+  Os breakpoints marcados em um arquivo persistem ao fechar e reabrir a IDE.
+  Cada arquivo tem seu próprio JSON em %APPDATA%/hein/estado_editor/<nome>.json.
+  Ao reabrir o arquivo no editor, os BPs são restaurados automaticamente na calha.
+  Bookmarks, folds, posição do cursor e scroll também são persistidos.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO
+
+CAUSA RAIZ:
+  —
+
+ONDE IMPLEMENTAR:
+  EstadoEditor.salvar(): json.dump com breakpoints, bookmarks, folds, cursor, scroll.
+  EstadoEditor.carregar(): json.load, restaura todos os campos; retorna True/False.
+  _caminho_estado(caminho_arquivo): sanitiza o path com re.sub para nome de arquivo seguro.
+  Localização: os.path.join(PASTA_APPDATA, "estado_editor", nome_seguro + ".json").
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 5.2 Regex de sanitização de path — backslash no Windows
+
+ARQUIVO: _EDITOR_/Core/estado_editor.py
+
+COMPORTAMENTO ESPERADO:
+  Caminhos Windows (ex: C:\Users\Henrique\projeto\main.py) geram um nome
+  de arquivo plano seguro, sem criar subdiretórios aninhados no disco.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  [✓] IMPLEMENTADO — BUG IMP-05 corrigido.
+  Antes: regex r'[\/:*?"<>|]' não capturava o backslash (\).
+  Resultado: C:\Users\Henrique\... virava C:_Users_Henrique_... mas os backslashes
+  remanescentes faziam os.path.join criar pastas C:, Users, Henrique dentro de
+  estado_editor/ — gerando estrutura de diretórios inesperada.
+
+CAUSA RAIZ:
+  estado_editor.py · _caminho_estado() · linha 29:
+  re.sub(r'[\/:*?"<>|]', '_', caminho_arquivo)
+  O backslash \ não estava no conjunto de caracteres do raw string, pois dentro
+  de r'...' o \\ é necessário para representar um backslash literal.
+
+ONDE IMPLEMENTAR:
+  _caminho_estado(): regex corrigida para r'[\\/:*?"<>|]'.
+  O double-backslash dentro do raw string representa o caractere \ literal.
+
+STATUS: [✓] IMPLEMENTADO
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SEÇÃO 6 — PENDENTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## 6.1 Saída (stdout) do script depurado em aba Run separada
+
+ARQUIVO: _TERMINAIS_/Debug/cliente_dap.py · _APP_/terminal_tab_widget.py
+
+COMPORTAMENTO ESPERADO:
+  Enquanto o script roda sob o depurador, qualquer print() que ele faça
+  deve aparecer em tempo real na aba Run (RunOutputWidget), assim como
+  ocorre ao rodar sem depurador.
+  O usuário vê saída e variáveis ao mesmo tempo, em abas separadas.
+
+COMPORTAMENTO ATUAL (BUG / AUSENTE):
+  stdout=DEVNULL no subprocess — toda saída do script é descartada.
+  Não existe redirecionamento para a aba Run durante sessão de depuração.
+
+CAUSA RAIZ:
+  cliente_dap.py · ClienteDAP._iniciar_processo():
+  stdout=subprocess.DEVNULL — escolha intencional para evitar bloqueio de pipe,
+  mas impede a captura da saída do usuário.
+  A leitura de stdout em background (thread separada) exigiria coordenação
+  com o RunOutputWidget sem usar a mesma instância do subprocess do Run normal.
+
+ONDE IMPLEMENTAR:
+  ClienteDAP._iniciar_processo(): stdout=subprocess.PIPE em vez de DEVNULL.
+  Nova thread interna _ThreadStdout(QThread) que lê stdout linha a linha
+  e emite Signal linha_stdout(str) → PainelDebug → terminal_tab_widget
+  redireciona para o RunOutputWidget da sessão atual.
+  Alternativa mais simples: stdout → arquivo temporário monitorado por QFileSystemWatcher.
+  ⚠️ Cuidado: stdout=PIPE bloqueia se o buffer encher sem leitura (4KB típico).
+  A thread de leitura é obrigatória.
+
+STATUS: [ COMPORTAMENTO DEFINIDO — aguardando instrução para implementar ]

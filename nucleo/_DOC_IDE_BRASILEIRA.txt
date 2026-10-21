@@ -1,0 +1,339 @@
+# nucleo/_DOC_IDE_BRASILEIRA.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  hein IDE — DOCUMENTO: IDENTIDADE BRASILEIRA
+  Última atualização: 2026-07-22
+  Objetivo: Centralizar tudo que faz da hein IDE uma IDE 100% brasileira —
+            traduções, corretor ortográfico, temas, mensagens e futuros recursos.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+VISÃO GERAL
+───────────
+A hein IDE foi concebida para ser a primeira IDE desktop verdadeiramente
+brasileira: interface, mensagens de erro, temas, correção ortográfica e
+documentação inteiramente em português do Brasil.
+
+Este documento registra todos os módulos, decisões de arquitetura e regras
+que sustentam essa identidade.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. TRADUTOR DE ERROS DO PYTHON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Módulo: _TRADUTION_/tradutor_erros.py
+
+O que faz:
+  Intercepta as mensagens de erro padrão do Python (em inglês) e as converte
+  para português claro e didático, acessível a quem está aprendendo.
+
+  Exemplos de tradução:
+    "SyntaxError: invalid syntax"          → "Erro de sintaxe: sintaxe inválida"
+    "NameError: name 'x' is not defined"   → "Erro de nome: 'x' não foi definido"
+    "IndentationError: unexpected indent"  → "Erro de indentação: recuo inesperado"
+    "TypeError: unsupported operand type"  → "Erro de tipo: operação não suportada"
+    "ZeroDivisionError: division by zero"  → "Erro: divisão por zero"
+
+Onde é usado:
+  - _EDITOR_/Outline (status bar) — traduz erros de parse exibidos abaixo do outline
+  - Terminal Run (futuro) — traduz exceções em runtime antes de mostrar ao usuário
+
+Regras de manutenção:
+  - Toda nova mensagem de erro do Python que aparecer na hein deve ser mapeada aqui
+  - Nunca traduzir nomes de variáveis/funções do código do usuário, apenas as
+    mensagens fixas do interpretador
+  - O módulo é estático — sem estado, sem QThread, sem dependências de UI
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. CORRETOR ORTOGRÁFICO PT-BR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Módulo principal: _EDITOR_/Funcionalidades/corretor_ortografico.py
+
+2.1 VISÃO GERAL
+───────────────
+O corretor ortográfico verifica a escrita em português em:
+  - Strings e comentários de arquivos Python
+  - Texto completo de arquivos .txt, .log, .csv, .ini, .cfg, .toml
+  - Texto principal de arquivos Markdown (.md), excluindo blocos de código
+
+O que NÃO é corrigido (intencional):
+  - Nomes de variáveis, funções, classes, módulos
+  - Nomes de arquivos e caminhos
+  - Código dentro de blocos ``` em Markdown
+  - Código inline com ` em Markdown
+  - URLs (https://...)
+  - Palavras com menos de 3 letras (false positives de artigos e preposições)
+
+2.2 ARQUITETURA — DOIS NÍVEIS
+──────────────────────────────
+
+Nível 1 — Básico (sempre disponível, bundlado no .exe):
+  Arquivo:   AppData\hein\dicionarios\pt_BR_basico.txt
+  Origem:    _APPDATA_/dicionarios/pt_BR_basico.txt (copiado no primeiro uso)
+  Conteúdo:  ~3.000 palavras mais comuns do PT-BR
+             (verbos, substantivos, adjetivos, termos de programação)
+  Motor:     Levenshtein puro Python (stdlib) — zero dependências externas
+
+Nível 2 — Completo (opcional, download sob demanda):
+  Arquivo:   AppData\hein\dicionarios\pt_BR_completo.txt  [FUTURO]
+  Origem:    Download via _venv_hein_ / VenvHeinManager
+  Conteúdo:  ~200.000 palavras (Hunspell PT-BR convertido para .txt)
+  Motor:     Mesmo Levenshtein — só o dicionário muda
+  Ativação:  Automática — se o arquivo existir, é carregado junto com o básico
+
+Dicionário do usuário (sempre disponível, persiste entre sessões):
+  Arquivo:   AppData\hein\dicionarios\pt_BR_usuario.txt
+  Origem:    Criado pela hein quando o usuário clica "+ Adicionar ao dicionário"
+  Conteúdo:  Palavras pessoais — nomes próprios, termos técnicos, jargões
+  Hot-reload: Automático via invalidar_dicionario() após cada adição
+
+2.3 FLUXO DE VERIFICAÇÃO
+─────────────────────────
+
+  Usuário digita
+        │
+        ▼
+  textChanged → debounce 1200ms → _lancar_correcao()
+        │
+        ▼
+  _ThreadCorretor.run() [background — nunca bloqueia UI]
+        │
+        ├── modo "python"   → _extrair_python()
+        │                      tokenize.generate_tokens() → STRING + COMMENT
+        │                      Pula variáveis, defs, classes
+        │
+        ├── modo "texto"    → _extrair_texto()
+        │                      regex palavra por palavra, linha por linha
+        │
+        └── modo "markdown" → _extrair_markdown()
+                               Pula blocos ```, código inline `, URLs
+        │
+        ▼
+  Para cada palavra extraída: _esta_correto(palavra)?
+        │
+        ├── Sim → ignora
+        └── Não → adiciona à lista de erros (linha, col_ini, col_fim, palavra)
+        │
+        ▼
+  concluido.emit(erros) → UI thread
+        │
+        ▼
+  _construir_selecoes() → QTextCharFormat.SpellCheckUnderline (amarelo-dourado)
+        │
+        ▼
+  _aplicar_selecoes() → setExtraSelections()
+  [mescla com import validator e lint — não sobrescreve]
+
+2.4 POPUP DE SUGESTÕES
+───────────────────────
+
+  Ativação: hover do mouse sobre palavra sublinhada
+  Padrão:   Qt.ToolTip + FramelessWindowHint + WA_ShowWithoutActivating
+            (mesmo padrão do _PopupDiffHunk da calha git)
+
+  Conteúdo do popup:
+    - Nome da palavra marcada (amarelo)
+    - Até 5 sugestões clicáveis (distância de Levenshtein ≤ 2)
+    - "+ Adicionar ao dicionário" → grava em pt_BR_usuario.txt
+
+  Algoritmo de sugestão:
+    1. Filtra candidatos: mesma inicial + comprimento ±2
+    2. Fallback: comprimento ±1 (sem restrição de inicial)
+    3. Calcula distância de Levenshtein para cada candidato
+    4. Retorna os 5 com menor distância (≤ 2)
+
+2.5 INTEGRAÇÃO COM O EDITOR
+─────────────────────────────
+
+Ponto de integração: Editor/__init__.py (CodeEditor)
+
+O corretor é instanciado com base no atributo spell_check do LanguageProvider:
+
+  provider = get_provider(extensao)
+  if provider.spell_check:
+      modo = "python" if extensao in ('.py', '.pyw') else "texto"
+      if extensao in ('.md', '.markdown'):
+          modo = "markdown"
+      self._corretor = CorretorOrtografico(self, modo)
+      self._corretor.verificar_agora()
+  else:
+      self._corretor = None
+
+Providers com spell_check = True:
+  ✅ Python/    (.py, .pyw)   → modo "python"   (strings + comentários)
+  ✅ Texto/     (.txt, .log,  → modo "texto"    (texto puro completo)
+                 .csv, .ini,
+                 .cfg, .toml)
+  ✅ Markdown/  (.md, .md)    → modo "markdown" (texto excluindo blocos de código)
+
+Providers com spell_check = False (intencional):
+  ✗  JSON, XML, YAML, HTML, JavaScript, Shell, SQL, C/C++, Makefile, Lua,
+     Dockerfile — são formatos de código ou marcação estruturada, não texto livre
+
+2.6 ESTRUTURA DE ARQUIVOS NO APPDATA
+──────────────────────────────────────
+
+  %APPDATA%\hein\
+  └── dicionarios\                   ← pasta gerenciada por _APPDATA_
+      ├── pt_BR_basico.txt           ← bundlado — copiado no primeiro uso
+      ├── pt_BR_usuario.txt          ← criado automaticamente (vazio no início)
+      └── pt_BR_completo.txt         ← futuro, download opcional
+
+  Propriedade do GerenciadorAppData:
+      appdata.dicionarios  →  %APPDATA%\hein\dicionarios\
+
+2.7 REGRAS DE MANUTENÇÃO
+──────────────────────────
+
+  RB-01  O corretor NUNCA verifica identificadores Python (variáveis, funções,
+         classes). Apenas o conteúdo semântico de strings e comentários.
+
+  RB-02  RG-02 se aplica: _ThreadCorretor roda em QThread — NUNCA na UI thread.
+
+  RB-03  O dicionário é carregado lazy (na primeira verificação) e cacheado em
+         memória (_dicionario: set[str]). invalidar_dicionario() limpa o cache.
+
+  RB-04  Ao adicionar palavra ao dicionário do usuário, sempre chamar
+         invalidar_dicionario() logo após a escrita no arquivo.
+
+  RB-05  setExtraSelections() do corretor NUNCA sobrescreve as seleções de
+         outros sistemas (import validator, lint, busca). Sempre mescla.
+
+  RB-06  A cor do sublinhado ortográfico é #e5c07b (amarelo-dourado).
+         Não alterar — serve para distinguir de erros de import (vermelho)
+         e lint (também vermelho/laranja).
+
+  RB-07  Palavras com menos de 3 caracteres não são verificadas (regex {3,}).
+
+  RB-08  O dicionário pt_BR_basico.txt é a fonte de fábrica — nunca modificar
+         em runtime. Customizações do usuário vão sempre em pt_BR_usuario.txt.
+
+  RB-09  Palavras são comparadas em lowercase. O dicionário deve conter apenas
+         palavras em minúsculas.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. TEMAS COM NOMES BRASILEIROS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Localização: _APPDATA_/temas/ e AppData\hein\temas\
+
+Todos os temas da hein IDE têm nomes que evocam a cultura, natureza e
+culinária brasileira:
+
+  Escuros:
+    noite_fechada    — preto profundo com acentos em azul petróleo
+    goias_noite      — tons terrosos escuros do cerrado à noite
+    sao_paulo_noite  — cinza urbano com laranja neón
+    rio_de_janeiro_noite — azul-marinho com verde tropical
+    monokai_vivo     — clássico monokai com identidade brasileira
+    acai             — roxo açaí com tons de fruta
+    iara             — verde-água profundo da lenda indígena
+    boitata          — laranja-fogo da serpente de fogo
+
+  Claros:
+    claro_classico   — branco neutro produtivo
+    branco_limpo     — minimalista com tipografia elegante
+    goias_dia        — bege cerrado com acentos verdes
+    sao_paulo_dia    — branco urbano com azul paulistano
+    rio_de_janeiro_dia — azul-céu com verde carioca
+
+  Temáticos:
+    cafe_com_leite   — bege caramelo, quente e acolhedor
+    caipirinha       — verde limão com amarelo vibrante
+    festa_junina     — vermelho, amarelo e azul festivo
+    carnaval         — colorido e energético
+    feijoada         — marrom terroso com preto e branco
+    coxinha          — bege dourado humorístico
+    cerrado          — tons terrosos e verdes secos
+    amazonia         — verde intenso com terroso amazônico
+    litoral          — azul oceânico com areia
+    sertao           — laranja árido com bege seco
+    ipe_amarelo      — amarelo vibrante da flor símbolo do Brasil
+    bossa_nova       — elegante, jazz, sofisticado
+
+Regras:
+  - Todo novo tema deve ter um nome brasileiro (lugar, alimento, fauna, flora,
+    cultura popular)
+  - As cores devem evocar o nome — não é só decorativo
+  - Usar tema_global().dados() nas cores — nunca hex hardcoded nos widgets
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. INTERFACE 100% EM PORTUGUÊS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Regras gerais:
+  - Todo texto visível ao usuário deve estar em português do Brasil
+  - Nenhuma string de UI em inglês nos widgets — sem exceções
+  - Mensagens de erro do sistema traduzidas via _TRADUTION_/tradutor_erros.py
+  - Tooltips, placeholders, rótulos, títulos de janela: todos em PT-BR
+  - Mensagens de status bar: PT-BR, diretas e objetivas
+
+Termos padronizados:
+  ✅ "Salvar"        ✗ "Save"
+  ✅ "Abrir"         ✗ "Open"
+  ✅ "Fechar"        ✗ "Close"
+  ✅ "Desfazer"      ✗ "Undo"
+  ✅ "Refazer"       ✗ "Redo"
+  ✅ "Recortar"      ✗ "Cut"
+  ✅ "Copiar"        ✗ "Copy"
+  ✅ "Colar"         ✗ "Paste"
+  ✅ "Buscar"        ✗ "Find"
+  ✅ "Substituir"    ✗ "Replace"
+  ✅ "Configurações" ✗ "Settings"
+  ✅ "Preferências"  ✗ "Preferences"
+  ✅ "Atalhos"       ✗ "Shortcuts"
+  ✅ "Temas"         ✗ "Themes"
+  ✅ "Extensões"     ✗ "Extensions"
+  ✅ "Pacotes"       ✗ "Packages"
+  ✅ "Executar"      ✗ "Run"
+  ✅ "Depurar"       ✗ "Debug"
+  ✅ "Terminal"      (aceito — já incorporado ao PT-BR técnico)
+  ✅ "Git"           (nome próprio — aceito)
+  ✅ "GitHub"        (nome próprio — aceito)
+
+Termos técnicos que ficam em inglês (são nomes próprios ou siglas):
+  Python, GitHub, OAuth, API, IDE, JSON, XML, YAML, SQL, HTML, CSS,
+  JavaScript, TypeScript, Git, pip, PyInstaller
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. PRÓXIMOS RECURSOS DE IDENTIDADE BRASILEIRA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Planejados (sem data, sem prioridade definida):
+
+  IB-01  Dicionário PT-BR completo (~200k palavras)
+         Download via painel da _venv_hein_ ou botão nas configurações
+         Fonte: Hunspell PT-BR convertido para .txt
+         Ativação automática quando presente em AppData\hein\dicionarios\
+
+  IB-02  Corretor em strings multilinhas (triple-quote Python)
+         Atualmente o corretor pula strings com """ e ''' (v1)
+         v2: mapear linha por linha dentro da string multilinha
+
+  IB-03  Dicionário de termos técnicos PT-BR
+         Termos de programação em português que não estão no Hunspell
+         Mantido pela comunidade (pull requests no repositório)
+
+  IB-04  Tradução de docstrings em tempo real
+         Já existe _NUCLEO_/nucleo_gerador_docstrings.py com prompts
+         Adicionar instrução explícita para gerar em PT-BR
+
+  IB-05  Mensagens de erro de runtime traduzidas
+         Atualmente apenas erros de parse/sintaxe são traduzidos
+         Expandir para: TypeError, ValueError, AttributeError, IndexError, etc.
+
+  IB-06  Suporte a variantes regionais
+         pt_BR (Brasil) é o foco. pt_PT (Portugal) não é planejado.
+         Palavras como "ônibus" (BR) vs "autocarro" (PT): sempre usar BR.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fim do documento · atualizar sempre que novo recurso de identidade brasileira
+for implementado
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

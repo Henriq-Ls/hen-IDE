@@ -1,0 +1,315 @@
+# 📁 _APPDATA_/_DOC_APPDATA_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _APPDATA_
+Última atualização: 2026-07-16 (Defaults PainelIA — pasta ia/ + _garantir_ia())
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+Ser o ponto único de acesso e controle de tudo que vive no
+%APPDATA%/hein/ (AppData do usuário). Nenhum outro módulo da IDE
+deve montar caminhos de AppData na mão nem criar pastas por conta
+própria — tudo passa por aqui.
+
+Padrão arquitetural: Singleton Facade.
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES
+─────────────────────────────────────────────────────────────────
+
+1. ESTRUTURA DO APPDATA
+   Garante, na inicialização, que todas as pastas e arquivos padrão
+   existam antes de qualquer módulo tentar usá-los.
+
+2. CAMINHOS CANÔNICOS
+   Expõe cada caminho do AppData como propriedade da classe.
+   Quem precisar de um caminho pede ao GerenciadorAppData — nunca
+   calcula na mão usando PASTA_APPDATA + string.
+
+3. BACKUPS DE CONFIGURAÇÃO
+   fazer_backup() copia os JSONs ativos de AppData/ para
+   _conf_bakup/ com timestamp no nome. Rotação FIFO — máximo 5
+   cópias por arquivo. Chamado automaticamente no closeEvent().
+
+4. VENV COMPARTILHADA
+   Expõe o caminho e o executável Python da venv global do usuário
+   (_venv_hein_/) para qualquer módulo que precisar.
+
+5. RESTAURAR PADRÃO
+   restaurar_padrao(componente) copia o JSON de fábrica direto de
+   _CONFIGURA_/ (fonte de verdade do projeto) sobre o arquivo ativo em
+   %APPDATA%/hein/. Para "tema", a fonte é o pacote de temas
+   pré-instalados _APPDATA_/temas/tema_padrao.json.
+   Não existe mais cópia intermediária em AppData/default/ — foi
+   removida em 2026-07-15 (ver OBSERVAÇÕES e HISTÓRICO). Ela ficava
+   desatualizada sempre que a IDE era atualizada sem reinstalar do
+   zero, já que só era populada uma vez, no primeiro uso.
+   O chamador é responsável por disparar o hot-reload após restaurar.
+
+6. TEMAS DA IDE
+   A pasta _APPDATA_/temas/ contém os 54 temas pré-instalados
+   (estados brasileiros) + tema_padrao.json. estrutura.py copia
+   tudo para AppData/temas/ no primeiro uso. Novos temas baixados
+   pelo usuário vão diretamente em AppData/temas/.
+
+7. SCRIPTS EXTERNOS / TAREFAS
+   A pasta tarefas/ é o destino canônico.
+   appdata.tarefas → caminho garantido e centralizado.
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS DO PACOTE
+─────────────────────────────────────────────────────────────────
+
+  __init__.py        Exporta GerenciadorAppData e a instância
+                     singleton pronta (appdata).
+
+  gerenciador.py     GerenciadorAppData — Singleton/Facade.
+                     Propriedades de caminho + inicializar() +
+                     restaurar_padrao().
+
+  estrutura.py       garantir_estrutura() — cria pastas e copia
+                     templates no primeiro uso. Stdlib puro.
+                     Funções internas:
+                       _garantir_jsons_configura() — JSONs ativos, agora
+                                                      dentro de configuracoes/
+                                                      (reorganizado 2026-07-15)
+                       _migrar_pasta_editor_states() — renomeia editor_states/
+                                                      → estado_editor/ em
+                                                      instalações existentes
+                       _garantir_temas()           — temas do menu
+                       _garantir_templates_autocompletar()
+                       _garantir_ia()              — copia perguntas.json e system_prompt.json
+                                       de _APPDATA_/ia/ para AppData/ia/ (1x)
+        _garantir_leia_me()         — cria LEIA-ME.txt na raiz
+                                                      do AppData (só na 1ª vez;
+                                                      nunca sobrescreve)
+                       _limpar_legado()            — remove AppData/
+                                                      default/ órfã de
+                                                      instalações antigas
+
+  backup.py          fazer_backup() — copia JSONs ativos para
+                     _conf_bakup/ com timestamp; rotação FIFO 5 cópias.
+                     Chamado em MainWindow.closeEvent().
+
+  temas/             Pasta com os temas pré-instalados da IDE.
+                     tema_padrao.json é o tema padrão explícito.
+                     Copiados para AppData/temas/ no primeiro uso.
+                     Novos temas do usuário ficam em AppData/temas/.
+
+─────────────────────────────────────────────────────────────────
+# ESTRUTURA DE PASTAS GERENCIADA
+─────────────────────────────────────────────────────────────────
+
+  %APPDATA%/hein/
+  ├── layout.json            larguras de splitters + tema ativo (tema_json)
+  ├── recentes.json          histórico de projetos (máx. 10)
+  ├── sessao.json            abas e projeto da última sessão
+  ├── github_config.json     token OAuth GitHub
+  ├── tarefas.json           tarefas globais da IDE
+  ├── hein.log               log operacional da IDE (gerenciado por _LOG_/)
+  ├── hein_workers.log       diagnóstico estruturado de workers e threads
+  ├── LEIA-ME.txt            explicação em português simples da pasta, pra
+  │                          usuário iniciante (criado 1x, nunca sobrescrito)
+  │
+  ├── configuracoes/         JSONs de configuração do usuário (novo 2026-07-15
+  │   │                      — antes ficavam soltos direto na raiz)
+  │   ├── configurar.json    configurações ativas
+  │   ├── atalhos.json       mapeamento de teclas ativo
+  │   ├── nucleo.json        configuração do núcleo ativa
+  │   ├── autocomplete.json  autocomplete ativo
+  │   └── perfil.json        perfil/licença do usuário
+  ├── _conf_bakup/           backups automáticos das configs globais
+  │   └── <nome>_YYYYMMDD_HHMMSS.json  (máx. 5 por arquivo, FIFO)
+  ├── estado_editor/         estado salvo por arquivo (cursor/scroll/BPs) —
+  │                          renomeado 2026-07-15, era "editor_states/"
+  ├── tarefas/               scripts e tarefas do usuário
+  ├── autocompletar/         templates de autocompletar editáveis
+  │   ├── simbolos.json
+  │   ├── palavras.txt
+  │   └── emojis.json
+  ├── ia/                    defaults do PainelIA (copiados 1x de _APPDATA_/ia/)
+  │   ├── perguntas.json
+  │   └── system_prompt.json
+  ├── temas/                 temas instalados e baixados pelo usuário
+  │   ├── tema_padrao.json   tema padrão da IDE (pré-selecionado na 1ª execução)
+  │   ├── acre_dia.json
+  │   ├── acre_noite.json
+  │   └── ...54 temas dos estados...
+  └── _venv_hein_/           venv compartilhada de pacotes globais
+
+  NOTA: não existe mais "thema.json" solto na raiz nem pasta "default/".
+  Ambos foram removidos em 2026-07-15 — ver OBSERVAÇÕES. Instalações
+  antigas podem ter esses itens órfãos no disco; _limpar_legado()
+  (estrutura.py) remove "default/" automaticamente na próxima
+  inicialização. "thema.json" e "thema.json.bak" órfãos são inofensivos
+  e podem ser apagados manualmente. "editor_states/" de instalações
+  antigas é renomeada automaticamente para "estado_editor/" por
+  _migrar_pasta_editor_states() (sem perder estados já salvos).
+
+─────────────────────────────────────────────────────────────────
+# SISTEMA DE TEMAS — ARQUITETURA
+─────────────────────────────────────────────────────────────────
+
+O tema ativo é SEMPRE um arquivo de AppData/hein/temas/.
+Não existe mais um "thema.json" separado na raiz do AppData — essa
+duplicata foi eliminada em 2026-07-15 (ver OBSERVAÇÕES).
+
+  Tema ativo:  AppData/temas/<nome>.json
+               Caminho salvo em layout.json como "tema_json"
+
+  Fallback / padrão de fábrica:
+               AppData/temas/tema_padrao.json
+               Usado na primeira execução, se o arquivo salvo sumir,
+               ou ao clicar em "Restaurar Padrões" (restaura este
+               arquivo específico a partir de _APPDATA_/temas/).
+               ARQUIVO_TEMA (_CONFIGURA_/__init__.py) aponta para ele.
+
+  Ctrl+3 abre o tema ativo (não um arquivo fixo).
+  ThemaExplorer é acionado para qualquer arquivo de AppData/temas/.
+  Hot-reload funciona sobre o tema ativo.
+
+─────────────────────────────────────────────────────────────────
+# FLUXO INTERNO
+─────────────────────────────────────────────────────────────────
+
+Inicialização (main.py — entre carregar_fontes() e MainWindow()):
+  from _APPDATA_ import appdata
+  appdata.inicializar()
+    → garantir_estrutura(PASTA_APPDATA, pasta_configura)
+         → cria pastas ausentes (incluindo temas/)
+         → copia _CONFIGURA_/*.json → AppData/*.json     (primeiro uso)
+         → copia _APPDATA_/temas/*.json → AppData/temas/ (primeiro uso)
+         → copia templates autocompletar                  (primeiro uso)
+         → remove AppData/default/ órfã, se existir de uma instalação
+           anterior (_limpar_legado — best-effort, silencioso)
+    → log.ok() para cada item criado
+    → self._inicializado = True (idempotente)
+
+Ao fechar a IDE (MainWindow.closeEvent()):
+  from _APPDATA_.backup import fazer_backup
+  fazer_backup()
+    → copia JSONs ativos → _conf_bakup/<nome>_YYYYMMDD_HHMMSS.json
+    → rotação FIFO: apaga excedentes > MAX_COPIAS=5
+  _gerenciador_abas.salvar_sessao()
+    → escreve sessao.json
+
+Uso em qualquer módulo:
+  from _APPDATA_ import appdata
+  caminho = appdata.editor_states   # Path garantido
+  caminho = appdata.temas           # Path garantido
+
+Restaurar padrão (menu Configurações → "Restaurar Padrões"):
+  restaurar_padroes() em main_window/base.py
+  → chama appdata.restaurar_padrao(componente) para cada componente
+    ("tema", "configurar", "atalhos", "nucleo")
+  → cada chamada lê direto de _CONFIGURA_/ (ou, para "tema", de
+    _APPDATA_/temas/tema_padrao.json) e copia sobre o arquivo ativo
+  → único caminho de código para restaurar padrões: o mesmo método
+    do facade fica disponível para qualquer chamador futuro
+  → o tema selecionado em AppData/temas/ NÃO é trocado — apenas o
+    conteúdo de tema_padrao.json é resetado ao original de fábrica
+
+─────────────────────────────────────────────────────────────────
+# SINAIS / API PÚBLICA
+─────────────────────────────────────────────────────────────────
+
+  AppData: sem sinais Qt emitidos externamente.
+  A inicialização é síncrona; resultado disponível imediatamente.
+
+  API PÚBLICA:
+    appdata.inicializar()              — deve ser chamado no startup (passo 4)
+    appdata.raiz                       → Path — %APPDATA%/hein/
+    appdata.sessao                     → Path — raiz/sessao.json
+    appdata.estado_editor              → Path — raiz/estado_editor/
+                                          (renomeado 2026-07-15, era editor_states)
+    appdata.configuracoes              → Path — raiz/configuracoes/ (novo 2026-07-15)
+    appdata.temas                      → Path — raiz/temas/
+    appdata.venv_compartilhada         → Path — raiz/_venv_hein_/
+    appdata.python_compartilhado       → Path — venv_compartilhada/Scripts/python.exe
+    appdata.venv_compartilhada_existe  → bool
+
+  Regra de uso: sempre via appdata.<propriedade>; NUNCA montar caminhos à mão.
+  Import lazy dentro de funções — nunca no topo de módulos que carregam
+  antes de appdata.inicializar().
+
+
+─────────────────────────────────────────────────────────────────
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+  Consome:
+    _CONFIGURA_/__init__.py    → PASTA_APPDATA, constantes de caminho
+    _CONFIGURA_/*.json         → arquivos de fábrica: cópia inicial (1º uso)
+                                 E fonte para restaurar_padrao()
+    _APPDATA_/temas/           → temas pré-instalados para AppData/temas/;
+                                 tema_padrao.json é a fonte de restore de "tema"
+    _CONFIGURA_/autocompletar/ → templates para autocompletar/
+    _LOG_/log.py               → import lazy (evita circular no startup)
+
+  É consumido por:
+    main.py                    → appdata.inicializar() no startup ✅
+    _APP_/main_window.py       → fazer_backup() no closeEvent() ✅
+    _EDITOR_/Autocomplete/     → appdata.autocompletar (fontes) ✅
+    _EDITOR_/Core/estado_editor.py → appdata.estado_editor (pendente)
+    _PAINEL_ESQUERDO_/Git/     → appdata.github_config (pendente)
+    qualquer módulo que precisar de caminho de AppData
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+- Nenhum módulo externo monta caminhos de AppData na mão —
+  sempre via appdata.<propriedade>
+- garantir_estrutura() é stdlib puro — sem PySide6
+- import de _LOG_/log.py é sempre lazy (dentro dos métodos)
+  para evitar import circular na inicialização
+- restaurar_padrao() NÃO dispara hot-reload — responsabilidade
+  do chamador (mantém o módulo desacoplado de Qt)
+- Toda falha de I/O é silenciosa (try/except sem relançar)
+- Idempotente: inicializar() pode ser chamado quantas vezes
+  quiser sem efeito colateral
+- Sem bibliotecas externas além de PySide6 + stdlib Python
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+- (2026-07-15) AppData/default/ foi eliminada, e "thema.json" deixou de
+  existir tanto em _CONFIGURA_/ quanto na raiz do AppData. Motivo: a
+  pasta default/ era populada uma única vez, no primeiro uso, e nunca
+  mais tocada — se a IDE fosse atualizada depois disso, default/
+  ficava com JSONs de fábrica desatualizados e "Restaurar Padrões"
+  restaurava uma versão antiga, não a atual. Corrigido fazendo
+  restaurar_padrao() ler direto de _CONFIGURA_/ (a fonte de verdade
+  única, sempre sincronizada com o código) a cada chamada. O build é
+  --onedir (ver _EXECUTAVEL_/), então _CONFIGURA_/ sempre existe ao
+  lado do .exe em produção — não havia motivo técnico para a cópia.
+  "thema.json" também foi removido por ser um duplicado exato de
+  _APPDATA_/temas/tema_padrao.json (mesma função, dois arquivos);
+  agora ARQUIVO_TEMA aponta direto para tema_padrao.json.
+
+- _CONFIGURA_/default/ (a pasta antiga, anterior à reorganização de
+  2026-07-14) já tinha sido removida antes (era letra morta, só tinha
+  README). Não confundir com AppData/default/, que é o item removido
+  em 2026-07-15 acima — eram coisas diferentes com nome parecido.
+
+- Os temas pré-instalados agora vivem em _APPDATA_/temas/ (movidos de
+  hein/temas/ na raiz). estrutura.py encontra os temas com:
+    os.path.join(os.path.dirname(__file__), "temas")
+
+- A venv compartilhada (_venv_hein_/) é a terceira venv do projeto:
+    venv da IDE      → D:\_PROJETOS\Editor_Terminal\.venv\
+    venv do usuário  → <projeto>\.venv\
+    venv compartilhada → %APPDATA%\hein\_venv_hein_\
+
+- backup.py está implementado e ativo. venv_manager.py é o único
+  módulo planejado restante.
+
+- gerenciador.py::restaurar_padrao() e main_window/base.py::
+  restaurar_padroes() foram unificados em 2026-07-15: o segundo agora
+  delega ao primeiro por componente, em vez de duplicar a lógica de
+  cópia de arquivos. Um único caminho de código para restaurar padrões.
+
+- O motor de autocomplete lê do AppData (appdata.autocompletar) com
+  cache interno (_CACHE_FONTES). Para forçar releitura sem reiniciar
+  a IDE, chamar _invalidar_cache_fontes() de autocomplete.py.

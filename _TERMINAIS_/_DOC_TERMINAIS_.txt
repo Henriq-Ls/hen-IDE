@@ -1,0 +1,521 @@
+# 📁 _TERMINAIS_/_DOC_TERMINAIS_.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+hein IDE — Módulo _TERMINAIS_
+Última atualização: 2026-10-19 (integração do build de executáveis na aba inferior)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# OBJETIVO
+Prover os terminais integrados da IDE e dois grupos de painéis visuais:
+  (1) Terminais de execução — Run (código do usuário na venv), PowerShell
+      interativo, e Depurador (sessão DAP via debugpy).
+  (2) Explorers de configuração — um painel visual dedicado para cada
+      arquivo JSON de configuração da IDE (_CONFIGURA_/). O usuário
+      edita cores, atalhos, fontes, snippets e parâmetros do Núcleo
+      sem precisar tocar no JSON cru.
+
+─────────────────────────────────────────────────────────────────
+# RESPONSABILIDADES
+─────────────────────────────────────────────────────────────────
+
+TERMINAIS:
+- Executar o código do usuário na venv do projeto (terminal Run)
+- Imprimir output em tempo real sem bloquear a UI
+- Detectar automaticamente JSON/dict no output do terminal Run
+- Exibir barra de notificação quando JSON é detectado
+- Prover aba visual { } JSON com árvore colapsável e código gerado
+- Gerar código Python pronto para acessar cada chave do JSON
+- Copiar caminhos de chaves e código para área de transferência
+- Abrir código gerado como nova aba no editor
+- Prover botão { } de acesso ao JSON Explorer em todos os terminais
+- Iniciar sessão de depuração real com debugpy via protocolo DAP
+- Controlar fluxo do depurador: Continuar, Próxima Linha, Entrar, Sair, Parar
+- Exibir variáveis locais do frame atual em tempo real
+- Encerrar o processo debugpy e liberar recursos ao fechar a aba
+
+EXPLORERS DE CONFIGURAÇÃO:
+- Exibir painel visual ao abrir qualquer JSON de _CONFIGURA_ no editor
+- Cada Explorer é roteado automaticamente por _ao_trocar_aba_editor_json()
+- Permitir edição com controles adaptados (swatch de cor, SpinBox, ComboBox etc.)
+- Salvar via json.dump e disparar hot-reload sem reiniciar a IDE
+- Sincronizar bidireccionalmente com QFileSystemWatcher: se o JSON mudar
+  no disco (edição manual), o Explorer recarrega automaticamente
+
+─────────────────────────────────────────────────────────────────
+# ARQUIVOS
+─────────────────────────────────────────────────────────────────
+
+── Explorers de configuração ─────────────────────────────────────
+
+  _TERMINAIS_/thema_explorer.py                        [NOVO — Sessão 10]
+    ThemaExplorer(QWidget) — painel visual para thema.json.
+    Exibe cada cor com swatch clicável (QColorDialog com alpha) +
+    input hex editável. Organizado em seções:
+      meta          — nome, autor, aparencia (QComboBox)
+      interface     — 27 chaves de cor da UI geral
+      editor        — 21 chaves + sub-seção "sintaxe" (24 cores)
+      terminal      — 5 chaves + sub-seção "cores_ansi" (16 cores)
+      terminal_run  — 9 cores de saída
+      painel_*      — arquivos (13), outline (20), git (24), ia (18)
+      log           — 4 cores de severidade
+      grafo         — 4 cores de nó/seta
+      menu_lateral  — 6 cores
+      menu_contexto — 5 cores
+    Swatch _Swatch(QLabel): mousePressEvent → QColorDialog.getColor()
+      com ShowAlphaChannel; nome de cor HexArgb se alpha < 255.
+    Valores "transparent" exibem swatch xadrez + campo de texto livre.
+    Salvar: json.dump → thema.json → hot-reload do gerenciador_tema.
+    Rota: Ctrl+3 → editor abre thema.json → _ao_trocar_aba_editor_json()
+          instancia ThemaExplorer no terminal_tabs.
+
+  _TERMINAIS_/configurar_explorer.py
+    ConfigurarExplorer(QWidget) — painel visual para configurar.json.
+    Seções: ui, editor, terminal, outline, painel_arquivos, painel_ia,
+    git, gutter, perfil. Layout 2-col QGridLayout.
+    Controles: ComboBox de fonte (hein no topo + sistema), SpinBox de
+    tamanho (pt), SpinBox de inteiros (com limites e sufixo),
+    QCheckBox de booleanos, QLineEdit para strings.
+    Botões: Salvar + Recarregar. Hot-reload automático ao salvar.
+    Rota: Ctrl+5 → editor abre configurar.json → explorer no terminal.
+
+  _TERMINAIS_/atalho_explorer.py
+    AtalhoExplorer(QWidget) — painel visual para atalhos.json.
+    Grupos coloridos por contexto: Busca / Global / Editor / Workspace
+    / Terminal. Coluna esquerda: tecla (editável). Coluna direita:
+    ação (read-only). Botão Salvar grava atalhos.json.
+    Hot-reload via gerenciador_atalhos registra novos QShortcuts.
+    Rota: Ctrl+4 → editor abre atalhos.json → explorer no terminal.
+
+  _TERMINAIS_/autocomplete_explorer.py
+    AutocompleteExplorer(QWidget) — painel visual para autocomplete.json.
+    Seção ambiente: campos editáveis (pasta_venv, site_packages_*).
+    Seção snippets: linhas add/remove, gatilho e código expandido.
+    Botão Salvar grava autocomplete.json.
+    Rota: Ctrl+6 → editor abre autocomplete.json → explorer no terminal.
+
+  _TERMINAIS_/nucleo_explorer.py
+    NucleoExplorer(QWidget) — painel visual para nucleo.json.
+    7 seções com controles adaptados por tipo:
+      formatador  — listas editáveis (pastas/arquivos/prefixos/stdlib)
+      diagnóstico — SpinBoxes de limites + checkboxes de alertas
+      índice      — listas opcionais
+      ambiente    — campo de texto para pasta_venv
+      ia          — ComboBox de provedor (ollama / rede)
+      documentador— QPlainTextEdit para system_prompt
+      exportar    — 4 checkboxes (readme/arquitetura/docs/push)
+    Chaves com prefixo _ são exibidas como dica e não editadas.
+    Rota: Ctrl+7 → editor abre nucleo.json → explorer no terminal.
+
+  _TERMINAIS_/prompt_nucleo_explorer.py                       [NOVO — Sessão 28]
+    PromptNucleoExplorer(QWidget) — editor visual para nucleo_prompts.json.
+    Aberto diretamente por Ctrl+0 — não passa por _ao_trocar_aba_editor_json().
+    2 seções com 6 QPlainTextEdit (alturas proporcionais ao nº de linhas):
+      Docstrings   — funcao (3 lin, 64px) · classe (3 lin, 64px)
+      Documentador — doc_pasta (6 lin, 130px) · resumo_projeto (4 lin, 90px)
+                     readme_github (8 lin, 170px) · doc_site (8 lin, 170px)
+    Botão "Salvar Alterações": grava nucleo_prompts.json via json.dump +
+      invalida _PROMPTS_CACHE/_PROMPTS_TS em nucleo_ia para que obter_prompt()
+      leia o arquivo atualizado na próxima chamada.
+    Botão "Restaurar Padrão": QMessageBox de confirmação + regrava padrão +
+      recarga da UI.
+    _coletar_dados(): mescla valores editados com o JSON original (preserva
+      chaves _ e outras seções não exibidas).
+    QFileSystemWatcher: hot-reload bidirecional com debounce de 700ms;
+      _salvando flag evita loop (igual ao padrão NucleoExplorer).
+    Zero hex hardcoded — tudo via tema_global().
+
+── Execução de linguagens não-Python (Mult_Terminais/) ────────────
+
+  _TERMINAIS_/Mult_Terminais/                                  [PASTA]
+    Pacote dedicado à execução de linguagens com can_run=True
+    no seu LanguageProvider (JS/TS, Shell, Lua, Makefile).
+    Documentação detalhada: Mult_Terminais/_DOC_MULT_TERMINAIS_.txt
+
+    __init__.py              — exporta ExecutorTerminal + ExecutorExplorer
+
+    terminal_executor.py     — ExecutorTerminal(QWidget)
+      Widget de execução não-Python. Dois estados:
+        sem_ferramenta  → aviso + botão "Como instalar"
+        pronto          → campo de comando + ▶ Run + ■ Stop
+      QProcess: stdout/stderr em tempo real (cores ANSI). Não-bloqueante.
+      Aba reutilizada por nome de linguagem (sem duplicatas).
+
+    executor_explorer.py     — ExecutorExplorer(QWidget)
+      Painel visual para executores.json (atalho Ctrl+8).
+      Uma linha por linguagem: status ✓/✗ (shutil.which), campo de
+      comando editável, botão "Verificar", botão "Como instalar".
+      Cabeçalho "↺ Verificar tudo". Padrão _recarregar_se_necessario().
+
+  ROTEAMENTO:
+    F1 com arquivo .js/.lua/.sh/.mk:
+      main_window → provider.can_run=True
+      → terminal_tabs.abrir_executor_terminal(nome, arquivo)
+      → ExecutorTerminal
+
+    F1 com arquivo .sql/.xml/.txt/etc.:
+      main_window → provider.can_run=False → return silencioso
+
+    Ctrl+8 → executores.json → _ao_trocar_aba_editor_json
+      → ExecutorExplorer
+
+── Depurador integrado ────────────────────────────────────────────
+
+  _TERMINAIS_/Debug/                                           [PASTA]
+    Pacote completo do depurador integrado. Scripts, UI e documentos
+    reunidos em um único lugar para facilitar manutenção futura.
+
+    __init__.py               — exporta PainelDebug e ClienteDAP
+    cliente_dap.py            — veja seção abaixo
+    painel_debug.py           — veja seção abaixo
+    _DOC_SESSAO_DEPURADOR.txt — log histórico das sessões de debug
+    PT_depurador_debug.txt    — documento de trabalho (formato engenheiro)
+
+── Painel de tarefas (F2-F10) ─────────────────────────────────────
+
+  _TERMINAIS_/Tarefas/                                         [PASTA]
+    Pacote da UI de tarefas. A lógica de execução/persistência
+    (gerenciador_tarefas.py) permanece em _CONFIGURA_/, junto dos
+    demais gerenciadores de JSON. Veja _DOC_TAREFAS_.txt.
+
+    __init__.py            — exporta TarefasExplorer
+    tarefas_explorer.py    — TarefasExplorer(QWidget) + _CardTarefa
+    _DOC_TAREFAS_.txt       — documentação detalhada do sub-módulo
+    _STATUS_TAREFAS_.txt    — status e histórico de sessões
+
+── ExecutavelExplorer ─────────────────────────────────────────────
+
+  _TERMINAIS_/executavel_explorer.py
+    ExecutavelExplorer(QWidget) — editor tipado bidirecional do executavel.json.
+    Abre automaticamente via _ao_trocar_aba_editor_json() ao abrir executavel.json
+    no editor (Ctrl+9 / botões do PainelExecutavel).
+    Layout 3 painéis: QSplitter vertical (conteúdo [400px] + terminal build [150px])
+    + QSplitter horizontal interno (coluna esquerda [200px] + formulário [500px]).
+    Coluna esquerda: _txt_requirements (deps lidas de requirements.txt) +
+    _txt_arvore (lida de arvore.txt) — ambos em .hein/executavel/.
+    _ler_gitignore(raiz): parseia .gitignore e retorna set[str] de padrões simples.
+    _auto_detectar(): gera árvore, pip freeze e análise local; grava os campos
+    detectados em .hein/executavel/executavel.json.
+    _recarregar_se_necessario(): padrão dos outros Explorers (mtime).
+
+    _iniciar_release() / _ao_release_concluido() — release pelo GitHub Actions:
+      1. Gera .github/workflows/release-executavel.yml e um build_ci.py
+         autônomo dentro de .hein/executavel/ do projeto do usuário.
+      2. Inclui workflow, requirements.txt e configuração usando git add -f,
+         sem adicionar arquivos não relacionados que já estejam staged.
+      3. Usa config_github() e GerenciadorGit.executar_autenticado(); a
+         credencial fica no helper temporário, não na URL ou nos argumentos.
+      4. Recusa tag remota já publicada e tag local em outro commit; não usa
+         tag -f nem force-push. Falha entre push de branch/tag pode ser retomada
+         somente quando a tag local aponta para o HEAD atual e os arquivos estão iguais.
+      5. GitHub Actions instala requirements.txt, roda PyInstaller no Windows,
+         empacota onedir em ZIP e publica o artefato com contents: write.
+
+    Build local:
+      1. Usa a .venv do projeto ativo, instala PyInstaller nela e não depende
+         de conta ou conexão GitHub.
+      2. GerarSpecThread cria spec/version resource; ProcessoThread executa
+         PyInstaller sem abrir console auxiliar.
+
+── Explorer de código genérico ────────────────────────────────────
+
+  _TERMINAIS_/json_explorer.py
+    JsonExplorer(QWidget) — aba { } JSON para output do terminal Run.
+    Também serve como visualizador genérico para qualquer .json aberto
+    no editor que não tenha Explorer dedicado.
+    Método público: carregar(texto) / carregar_arquivo(caminho)
+    Signal: abrir_no_editor(str)
+
+    Funções internas:
+      _parsear(texto)          json.loads() → ast.literal_eval()
+      _extrair_json_do_output  varre output, retorna (dados, trecho)
+      _gerar_codigo            gera código Python recursivamente
+      _popular_arvore          popula QTreeWidget com cores por tipo
+
+── Terminais de execução ──────────────────────────────────────────
+
+  _TERMINAIS_/terminal_run.py
+    RunOutputWidget — terminal de execução do código do usuário.
+    Atributo: _arquivo_exec (str) — caminho passado a executar_python();
+      salvo em executar_python(); lido pelo main_window ao enviar para IA.
+    Signal: explorar_json_solicitado = Signal(str)
+    _ler_saida() e _ler_erro() passam stdout/stderr por traduzir()
+      (_TRADUTION_.tradutor_erros) antes de exibir — saída do processo do
+      usuário (stdout e stderr) sempre em PT-BR
+
+    Métodos relacionados ao JSON Explorer:
+      _imprimir(texto)      após imprimir, agenda _verificar_json()
+                            via QTimer.singleShot(0)
+      _verificar_json()     analisa output, atualiza barra se JSON novo
+      _ao_explorar_json()   emite explorar_json_solicitado
+
+    Widget interno:
+      _barra_json (QWidget) barra no rodapé com label + "Explorar →"
+                            visível só quando JSON detectado
+                            resetada pelo clear()
+
+  _TERMINAIS_/terminal_powershell.py
+    PowerShellTerminalWidget — terminal PowerShell interativo.
+    Atributo: _ultimo_comando (str) — último comando confirmado com Enter.
+    Atributo: project_path (str) — diretório do projeto ativo.
+    Método: set_project_path(path) — navega e ativa .venv.
+
+    Autocomplete básico [Sessão 23]:
+      _listar_arquivos_cwd(): Tab cicla arquivos/pastas do cwd; detecta
+        separador (/ ou \) no prefixo digitado para listar dentro de
+        subpastas, retornando candidato com caminho completo (ex:
+        models\livros.py). Fora de contexto import/from, lista o cwd;
+        em contexto import/from, lista pacotes do .venv + stdlib.
+      _atualizar_dica_autocomplete(): mostra QToolTip leve (não um popup)
+        com os candidatos do Tab enquanto o usuário digita; chamado após
+        inserir caractere, após Backspace (via QTimer.singleShot(0)) e
+        após navegar o histórico de comandos (↑/↓); escondido no Enter e
+        quando Tab confirma ou cicla a sugestão.
+      _cursor_no_fim_da_linha(): guarda que Tab-completion e a dica só
+        operam quando o cursor está exatamente no fim da linha do
+        documento — se o usuário voltar com ← e editar no meio, o
+        autocomplete fica inativo (corrige corrupção de texto/duplicação
+        de caractere que ocorria antes ao completar fora do fim da linha).
+      Escopo reduzido em relação à spec original (popup visual completo +
+      símbolos do projeto + fuzzy matching) — ver PENDENTE em
+      _STATUS_TERMINAIS_.txt.
+
+  _TERMINAIS_/Debug/cliente_dap.py
+    ClienteDAP(QThread) — cliente DAP completo para debugpy.
+    Construtor: __init__(arquivo, python_path, porta=0)
+      porta=0 → chama _porta_livre() para porta TCP efêmera.
+
+    Sinais emitidos (thread-safe via Qt):
+      pausado(arquivo: str, linha: int)
+      variaveis_recebidas(list[dict])   — dicts {nome, tipo, valor}
+      executando()
+      encerrado()
+      erro(str)
+
+    API pública (chamável da thread principal):
+      continuar()          → DAP continue
+      proximo()            → DAP next
+      entrar()             → DAP stepIn
+      sair()               → DAP stepOut
+      parar()              → DAP disconnect + _encerrar()
+      set_breakpoints(linhas: list[int]) → DAP setBreakpoints
+
+    Métodos internos:
+      _porta_livre()           socket bind("",0) → porta efêmera
+      _iniciar_processo()      subprocess.Popen com CREATE_NO_WINDOW (Win);
+                               adiciona --stop-on-entry na linha de comando
+                               quando não há breakpoints definidos
+      _conectar_socket()       tenta conexão TCP por até 15s
+      _handshake()             initialize → aguarda response →
+                               attach → aguarda initialized event →
+                               setBreakpoints → configurationDone
+                               (stopOnEntry no corpo do attach é ignorado
+                               pelo debugpy em modo --listen)
+      _loop_mensagens()        despacha stopped/continued/exited
+      _encerrar()              terminate/kill processo → drena stderr →
+                               fecha socket (ordem correta evita deadlock)
+
+    Constantes:
+      _HOST            = "127.0.0.1"
+      _TIMEOUT_CONEXAO = 15  (segundos para o debugpy subir)
+      _TIMEOUT_RECV    = 1.0 (timeout de recv — permite verificar _parar)
+
+    Segurança de thread:
+      _seq_lock (threading.Lock) — protege _seq e socket.sendall()
+      _parar (bool) — flag de encerramento verificada em todo loop
+
+  _TERMINAIS_/Debug/painel_debug.py
+    PainelDebug(QWidget) — painel visual de controle do depurador.
+    Construtor: __init__(arquivo="", parent=None)
+
+    Métodos públicos:
+      iniciar_sessao(arquivo, python_path, breakpoints=[])
+      sincronizar_breakpoints(breakpoints: list[int])
+      _parar_sessao_atual()
+      set_arquivo(arquivo)
+      set_estado(estado)
+
+    Botões: Continuar / Próxima Linha / Entrar / Sair / Parar
+    Estados visuais (_ESTADOS):
+      aguardando → "Aguardando..."  #8b949e
+      pausado    → "⏸  Pausado"    #e6c547
+      executando → "▶  Executando" #4ec994
+      parado     → "■  Parado"     #f87070
+      erro       → "✕  Erro"       #f87070
+
+  _TERMINAIS_/__init__.py
+    Exporta: PainelDebug e ClienteDAP (re-exportados de _TERMINAIS_.Debug)
+
+── Componentes de suporte (em _APP_/) ─────────────────────────────
+
+  _APP_/terminal_tab_widget.py
+    Métodos principais:
+      add_new_terminal()             conecta explorar_json_solicitado
+      _abrir_json_explorer(texto)    abre ou reutiliza aba { } JSON
+      _explorar_json_terminal_ativo()lê output ativo → _abrir_json_explorer
+      _setup_botoes_canto()          botão { } + botão 🐛
+      abrir_aba_debug(arquivo)       reutiliza ou cria aba "Depurador"
+      fechar_aba(indice)             chama _parar_sessao_atual() em PainelDebug
+      painel_debug_ativo()           retorna PainelDebug da aba ativa, ou None
+    Signal: debug_solicitado = Signal()
+
+  _APP_/tab_widget.py
+    add_new_tab_com_conteudo(conteudo, nome)
+      Cria aba com código gerado pelo JsonExplorer.
+
+─────────────────────────────────────────────────────────────────
+# FLUXO DOS EXPLORERS DE CONFIGURAÇÃO
+─────────────────────────────────────────────────────────────────
+
+ABERTURA AUTOMÁTICA:
+  1. Usuário pressiona Ctrl+N (ex: Ctrl+3 → thema.json)
+  2. main_window chama add_new_tab(ARQUIVO_*) → JSON cru no editor
+  3. _ao_trocar_aba_editor_json() detecta o caminho do arquivo
+  4. Instancia o Explorer correspondente (ThemaExplorer, etc.)
+  5. Adiciona em nova aba do terminal_tabs com ícone e nome do JSON
+  6. Se a aba já existia, apenas foca nela + _recarregar_se_necessario()
+
+EDIÇÃO E SALVAMENTO:
+  1. Usuário edita campos visuais (hex, SpinBox, ComboBox, etc.)
+  2. Clica "Salvar" no cabeçalho do Explorer
+  3. Explorer chama json.dump → grava arquivo JSON
+  4. QFileSystemWatcher do gerenciador detecta a mudança
+  5. Hot-reload aplica as novas configurações em toda a IDE
+
+SINCRONIZAÇÃO BIDIRECIONAL:
+  - QFileSystemWatcher no Explorer monitora o arquivo
+  - Se o JSON for editado externamente (ex: outro editor), o Explorer
+    recarrega automaticamente via _ao_arquivo_mudar()
+  - _recarregar_se_necessario() compara mtime antes de reconstruir o UI
+
+─────────────────────────────────────────────────────────────────
+# FLUXO DOS TERMINAIS DE EXECUÇÃO
+─────────────────────────────────────────────────────────────────
+
+DETECÇÃO AUTOMÁTICA DE JSON:
+  1. Usuário roda código → output impresso no terminal Run
+  2. _imprimir() agenda _verificar_json() via QTimer.singleShot(0)
+  3. Se JSON encontrado e diferente do anterior → exibe _barra_json
+
+SESSÃO DE DEPURAÇÃO:
+  1. Botão 🐛 → debug_solicitado → main_window._iniciar_debug()
+  2. main_window coleta BPs do NumeroLinhas do editor ativo
+  3. terminal_tabs.abrir_aba_debug(arquivo) → PainelDebug
+  4. PainelDebug.iniciar_sessao(arquivo, python_path, breakpoints)
+     → cria ClienteDAP → start()
+  5. ClienteDAP: Popen (com --stop-on-entry se sem BPs) → TCP →
+     handshake DAP → setBreakpoints → loop de eventos
+  6. Botões do painel controlam o fluxo (next/step/continue/stop)
+
+SINCRONIZAÇÃO DE BREAKPOINTS EM TEMPO REAL:
+  - NumeroLinhas.breakpoint_clicado → _ao_breakpoint_clicado(linha)
+  - _ao_breakpoint_clicado() verifica: arquivo do editor == arquivo
+    da sessão ativa; se diferente, descarta (guard de arquivo)
+  - Chama painel_debug_ativo().sincronizar_breakpoints(BPs_atuais)
+  - sincronizar_breakpoints() delega para ClienteDAP.set_breakpoints()
+  - _ao_trocar_aba_breakpoint() reconecta o sinal ao NumeroLinhas
+    correto quando o usuário muda de aba no editor
+
+─────────────────────────────────────────────────────────────────
+# SINAIS / API PÚBLICA
+─────────────────────────────────────────────────────────────────
+
+  RunOutputWidget
+    [Signal] explorar_json_solicitado = Signal(str)
+             Emitido quando JSON/dict é detectado no output.
+             Conectado a: main_window._ao_explorar_json()
+    [Signal] abrir_no_editor = Signal(str)
+             Emitido pelo JsonExplorer ao clicar "Abrir no Editor".
+
+  TerminalTabWidget
+    [Signal] debug_solicitado = Signal()
+             Emitido pelo botão 🐛 da barra de terminais.
+
+  API PÚBLICA (chamada de _APP_/main_window.py):
+    abrir_aba_debug(arquivo: str)
+    abrir_aba_pip(titulo: str) → AbaLogPip
+    painel_debug_ativo() → PainelDebug | None
+    set_project_path(caminho: str)  — PowerShell + Run
+    [Veja _DOC_DEBUG_.txt para API do sub-módulo depurador]
+
+
+# INTEGRAÇÕES
+─────────────────────────────────────────────────────────────────
+
+  _APP_/main_window.py
+    _ao_trocar_aba_editor_json() — roteamento JSON → Explorer
+    _iniciar_debug()             — conectado a debug_solicitado
+    _pegar_python_projeto()      — caminho python da venv do projeto
+
+  _CONFIGURA_/__init__.py
+    ARQUIVO_TEMA, ARQUIVO_CONFIG, ARQUIVO_ATALHOS,
+    ARQUIVO_NUCLEO, ARQUIVO_AUTOCOMPLETE — caminhos dos JSONs
+    ATALHO_* — constantes de atalho usadas no menu Configurações
+    (desde 2026-07-15; antes ficavam misturadas no menu Projeto, apesar
+    de serem ajustes da IDE e não do projeto aberto)
+
+  _LOG_/log.py
+    Todos os arquivos usam log. Nunca print().
+
+  _UTILITARIOS_/versionamento.py
+    checar_regressao_versao(caminho, versao_nova) → bool
+      chamado em executavel_explorer._iniciar_release() antes de publicar;
+      se True (nova < atual), HeinPopup.confirmar() exibe aviso ao usuário
+    registrar_release(caminho, versao, descricao)
+      chamado em executavel_explorer._ao_release_concluido() após o push da tag;
+      sincroniza VERSION e adiciona entrada "release vX.Y.Z" no CHANGELOG.md
+
+  debugpy (instalado na venv do projeto do usuário)
+    Biblioteca de terceiros. Não deve estar na venv da IDE.
+
+─────────────────────────────────────────────────────────────────
+# REGRAS
+─────────────────────────────────────────────────────────────────
+
+EXPLORERS:
+- Cada Explorer monitora seu próprio JSON com QFileSystemWatcher
+- _recarregar_se_necessario() compara mtime — não reconstrói se igual
+- Import dos Explorers é lazy (dentro de _ao_trocar_aba_editor_json)
+  para evitar import circular na inicialização
+- Aba de Explorer é reutilizada — nunca duplica
+- Salvar no Explorer → json.dump → remove comentários // do JSON.
+  Esperado: os labels do Explorer substituem os comentários.
+- ThemaExplorer: cor HexArgb (#aarrggbb) usada quando alpha < 255
+
+TERMINAIS:
+- _verificar_json() roda via QTimer.singleShot(0) — nunca bloqueia
+- Aba { } JSON NÃO entra em self.terminais (painel visual puro)
+- Aba { } JSON e aba "Depurador" são reutilizadas — sem duplicata
+- Limite de 50 itens em listas (evita travar com JSON grande)
+- ClienteDAP usa stdout=DEVNULL — nunca stdout=PIPE
+- _parar_sessao_atual() DEVE ser chamado antes de removeTab() com PainelDebug
+- debugpy deve estar na venv do projeto, não na venv da IDE
+
+─────────────────────────────────────────────────────────────────
+# OBSERVAÇÕES
+─────────────────────────────────────────────────────────────────
+
+Mapeamento JSON → Explorer → Atalho:
+  thema.json          → ThemaExplorer          → Ctrl+3
+  atalhos.json        → AtalhoExplorer         → Ctrl+4
+  configurar.json     → ConfigurarExplorer     → Ctrl+5
+  autocomplete.json   → AutocompleteExplorer   → Ctrl+6
+  nucleo.json         → NucleoExplorer         → Ctrl+7
+  executavel.json     → ExecutavelExplorer     → Ctrl+9 (via abrir_executavel_config)
+  nucleo_prompts.json → PromptNucleoExplorer   → Ctrl+0 (abertura direta, sem JSON no editor)
+
+Cores da árvore do JsonExplorer genérico:
+  dict       → azul    #56b6c2
+  list       → amarelo #e5c07b
+  str        → verde   #98c379
+  int/float  → laranja #d19a66
+  bool       → roxo    #c678dd
+  None       → cinza   #888888
+
+debugpy — modo de operação:
+  Modo --listen --wait-for-client → comando DAP é attach (não launch).
+  stopOnEntry no corpo do attach é ignorado pelo debugpy em modo --listen.
+  Para pausar na linha 1 sem BPs: passar --stop-on-entry na linha de
+  comando do subprocess (não como parâmetro DAP).
+
+Variáveis filtradas no depurador:
+  Nomes com prefixo __ ou @py_ são excluídos (internas do Python/debugpy).
